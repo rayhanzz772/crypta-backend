@@ -1,0 +1,222 @@
+# ===================================
+# Node.js / Express Backend
+# ===================================
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Lock files (optional - uncomment if needed)
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# ===================================
+# Environment & Configuration
+# ===================================
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+
+# Sequelize config (if contains sensitive data)
+config/config.json
+
+# ===================================
+# Database
+# ===================================
+
+# SQLite databases
+*.sqlite
+*.sqlite3
+*.db
+
+# PostgreSQL/MySQL dumps
+*.sql
+*.dump
+
+# Redis dump
+dump.rdb
+
+# ===================================
+# Logs
+# ===================================
+
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===================================
+# Build & Distribution
+# ===================================
+
+dist/
+build/
+out/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# ===================================
+# Testing & Coverage
+# ===================================
+
+coverage/
+.nyc_output/
+*.lcov
+TEST*.xml
+
+# ===================================
+# IDE & Editors
+# ===================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains (WebStorm, IntelliJ IDEA)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# ===================================
+# Operating Systems
+# ===================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ===================================
+# Security & Credentials
+# ===================================
+
+# Certificates & Keys
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# AWS
+.aws/
+
+# ===================================
+# Temporary & Cache
+# ===================================
+
+tmp/
+temp/
+*.tmp
+.cache/
+.parcel-cache/
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# ===================================
+# Process Managers
+# ===================================
+
+# PM2
+.pm2/
+ecosystem.config.js
+
+# ===================================
+# Compiled Files
+# ===================================
+
+# Java
+*.class
+*.jar
+
+# Python
+*.py[cod]
+__pycache__/
+
+# C/C++
+*.exe
+*.out
+*.app
+
+# Archives
+*.war
+*.zip
+*.tar.gz
+*.rar
+
+# ===================================
+# Media Files (Large)
+# ===================================
+
+*.mp4
+*.tiff
+*.avi
+*.flv
+*.mov
+*.wmv
+*.mkv
+*.webm
+
+# ===================================
+# Project Specific
+# ===================================
+
+# Add any project-specific patterns below
+# uploads/
+# backup/
