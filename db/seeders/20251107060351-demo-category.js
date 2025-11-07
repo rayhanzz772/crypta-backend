@@ -5,7 +5,7 @@ const cuid = require('cuid');
 module.exports = {
   async up (queryInterface, Sequelize) {
     
-    await queryInterface.bulkInsert('users', [
+    await queryInterface.bulkInsert('categories', [
       {
         id: cuid(),
         name: 'Work',
@@ -34,6 +34,6 @@ module.exports = {
   },
 
   async down (queryInterface, Sequelize) {
-     await queryInterface.bulkDelete('users', null, {});
+     await queryInterface.bulkDelete('categories', null, {});
   }
 };
