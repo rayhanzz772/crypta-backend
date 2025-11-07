@@ -9,7 +9,7 @@ async function deriveKey(masterPassword, salt, params = {}) {
     memoryCost: params.memoryCost || 2 ** 16,
     timeCost: params.timeCost || 3,
     parallelism: params.parallelism || 1,
-    hashLength: 32,
+    hashLength: 16,
     raw: true,
   };
 

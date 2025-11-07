@@ -37,12 +37,12 @@ exports.login = async (req, res) => {
 
 exports.register = async (req, res) => {
   try {
-    const { email, master_password } = req.body;
+    const { email, password } = req.body;
 
-    if (!email || !master_password) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email and master_password are required"
+        message: "Email and password are required"
       });
     }
 
@@ -55,7 +55,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    const breachCount = await checkPasswordBreach(master_password);
+    const breachCount = await checkPasswordBreach(password);
     if (breachCount > 0) {
       return res.status(400).json({
         success: false,
@@ -65,7 +65,7 @@ exports.register = async (req, res) => {
 
     // Hash master password sebelum disimpan
     const saltRounds = 12;
-    const hash = await bcrypt.hash(master_password, saltRounds);
+    const hash = await bcrypt.hash(password, saltRounds);
 
     // Simpan ke database
     const user = await User.create({
