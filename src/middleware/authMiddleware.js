@@ -1,5 +1,5 @@
+require("dotenv").config();
 const jwt = require("jsonwebtoken");
-
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -12,10 +12,11 @@ const authMiddleware = (req, res, next) => {
   }
 
   const token = authHeader.split(" ")[1];
-
   try {
     // Verifikasi token
+    console.log("Token received:", token);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("Decoded:", decoded);
 
     // Simpan data user ke req.user
     req.user = {
@@ -28,7 +29,11 @@ const authMiddleware = (req, res, next) => {
     console.error("JWT verification error:", err.message);
     return res.status(401).json({
       success: false,
-      message: "Invalid or expired token",
+      message: err.name === "TokenExpiredError"
+        ? "Token expired"
+        : err.name === "JsonWebTokenError"
+          ? "Invalid token"
+          : "Token verification failed",
     });
   }
 };
