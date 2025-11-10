@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const TagController = require("./controller");
-const authMiddleware = require("../../middleware/authMiddleware");
+const { authMiddleware } = require("../../middleware/authMiddleware");
 
 // Apply authentication middleware to all routes
 router.use(authMiddleware);

@@ -117,7 +117,7 @@ class Controller {
         ORDER BY sn.created_at DESC
         `,
         {
-          replacements: { userId },
+          replacements,
           type: db.Sequelize.QueryTypes.SELECT,
         }
       );

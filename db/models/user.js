@@ -9,6 +9,11 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'user_id',
         as: 'vaultPasswords'
       });
+
+      User.hasMany(models.ApiKey, {
+        foreignKey: 'user_id',
+        as: 'apiKeys'
+      });
     }
   }
 

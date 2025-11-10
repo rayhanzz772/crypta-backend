@@ -1,5 +1,7 @@
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
+const db = require("../../db/models");
+
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -38,4 +40,15 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-module.exports = authMiddleware;
+const apiKeyAuth = async (req, res, next) => {
+  const key = req.headers['x-api-key'];
+  if (!key) return res.status(401).json({ message: 'Missing API key' });
+
+  const record = await db.ApiKey.findOne({ where: { key, revoked: false } });
+  if (!record) return res.status(403).json({ message: 'Invalid or revoked API key' });
+
+  req.user = { userId: record.user_id };
+  next();
+};
+
+module.exports = { authMiddleware, apiKeyAuth };
