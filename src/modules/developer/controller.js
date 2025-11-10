@@ -16,6 +16,7 @@ class Controller {
       const key = `api-dev-${rawKey}`;
       const newKey = await db.ApiKey.create({ user_id: req.user.userId, key });
 
+      await t.commit();
       return res.status(201).json({
         success: true,
         message: 'API key generated successfully',
@@ -35,10 +36,11 @@ class Controller {
     const t = await db.sequelize.transaction();
     try {
       const keys = await db.ApiKey.findAll({
-        where: { user_id: req.user.userId },
+        where: { user_id: req.user.userId, revoked: false },
         attributes: ['id', 'key', 'revoked', 'created_at']
       });
 
+      await t.commit();
       return res.status(HTTP_OK).json(api.results(keys, HTTP_OK, { req }))
     } catch (err) {
       await t.rollback();
@@ -57,6 +59,7 @@ class Controller {
 
       key.revoked = true;
       await key.save();
+      await t.commit();
       return res.status(HTTP_OK).json({ success: true, message: "API key revoked successfully" });
     } catch (err) {
       await t.rollback();
