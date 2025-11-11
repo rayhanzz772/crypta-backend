@@ -19,4 +19,6 @@ router.get("/logs", Controller.getVaultLogs);
 router.post("/logs", Controller.logAction);
 router.get("/recent-activity", Controller.logRecentActivity);
 
+router.post("/favorite", Controller.toggleFavorite);
+
 module.exports = router;

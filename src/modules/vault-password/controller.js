@@ -94,18 +94,39 @@ class Controller {
       const items = await db.sequelize.query(
         `
         SELECT 
-        vp.id, 
-        vp.name, 
-        vp.username, 
-        vp.note, 
-        TO_CHAR(vp.created_at, 'YYYY/MM/DD') AS created_at,
-        TO_CHAR(vp.updated_at, 'YYYY/MM/DD') AS updated_at,
-        c.name AS category_name
+          vp.id, 
+          vp.name, 
+          vp.username, 
+          vp.note, 
+          TO_CHAR(vp.created_at, 'YYYY/MM/DD') AS created_at,
+          TO_CHAR(vp.updated_at, 'YYYY/MM/DD') AS updated_at,
+          c.name AS category_name,
+          CASE WHEN f.id IS NOT NULL THEN true ELSE false END AS is_favorite
+        FROM vault_passwords vp
+        LEFT JOIN categories c ON vp.category_id = c.id
+        LEFT JOIN favorites f 
+          ON f.target_id = vp.id
+          AND f.type = 'password'
+          AND f.user_id = :userId
+        ${whereClause}
+        ORDER BY 
+          is_favorite DESC,
+          vp.created_at DESC
+        LIMIT :limit OFFSET :offset
+        `,
+        {
+          replacements,
+          type: db.sequelize.QueryTypes.SELECT,
+          logging: console.log,
+        }
+      );
+
+      const totalCount = await db.sequelize.query(
+        `
+        SELECT COUNT(*) as total
         FROM vault_passwords vp
         LEFT JOIN categories c ON vp.category_id = c.id
         ${whereClause}
-        ORDER BY vp.created_at DESC
-        LIMIT :limit OFFSET :offset
       `,
         {
           replacements,
@@ -113,7 +134,12 @@ class Controller {
         }
       );
 
-      return res.status(HTTP_OK).json(api.results(items, HTTP_OK, { req }))
+      const results = {
+        rows: items,
+        count: parseInt(totalCount[0]?.total) || 0,
+      }
+
+      return res.status(HTTP_OK).json(api.results(results, HTTP_OK, { req }))
     } catch (err) {
       const code = err.code ?? INTERNAL_SERVER_ERROR
       return res.status(code).json(api.results(null, code, { err }))
@@ -346,6 +372,48 @@ class Controller {
     }
   }
 
+  static async toggleFavorite(req, res) {
+    const t = await db.sequelize.transaction();
+    try {
+      const userId = req.user.userId;
+      const { target_id, type } = req.body;
+
+      const existing = await db.Favorite.findOne({
+        where: { user_id: userId, target_id, type },
+      });
+
+      if (existing) {
+        await existing.destroy({ transaction: t });
+        await t.commit();
+        return res.status(HTTP_OK).json(api.results({ favorited: false }, HTTP_OK, { req }))
+      }
+
+      const MAX_FAVORITES = 3;
+      const totalFavorites = await db.Favorite.count({
+        where: { user_id: userId, type },
+      });
+
+      if (totalFavorites >= MAX_FAVORITES) {
+        throw new Error(`You can only have ${MAX_FAVORITES} favorites for ${type}s`);
+      }
+
+      await db.Favorite.create(
+        {
+          user_id: userId,
+          target_id,
+          type,
+        },
+        { transaction: t }
+      );
+
+      await t.commit();
+      return res.status(HTTP_OK).json(api.results({ favorited: true }, HTTP_OK, { req }))
+    } catch (err) {
+      await t.rollback();
+      console.error("Toggle favorite secret note error:", err);
+      res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
+    }
+  }
 }
 
 

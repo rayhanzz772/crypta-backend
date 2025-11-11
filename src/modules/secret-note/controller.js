@@ -107,14 +107,22 @@ class Controller {
           COALESCE(
             JSON_AGG(t.name) FILTER (WHERE t.name IS NOT NULL),
             '[]'
-          ) AS tags
+          ) AS tags,
+          CASE WHEN f.id IS NOT NULL THEN true ELSE false END AS is_favorite
         FROM secret_notes sn
+        LEFT JOIN favorites f 
+          ON f.target_id = sn.id
+          AND f.type = 'note'
+          AND f.user_id = :userId
         LEFT JOIN note_tags snt ON sn.id = snt.note_id
         LEFT JOIN tags t ON snt.tag_id = t.id
         LEFT JOIN categories c ON sn.category_id = c.id
         ${whereClause}
-        GROUP BY sn.id, c.name
-        ORDER BY sn.created_at DESC
+        GROUP BY sn.id, c.name, f.id
+        ORDER BY 
+                is_favorite DESC, 
+                sn.created_at DESC
+        LIMIT :limit OFFSET :offset
         `,
         {
           replacements,
@@ -122,7 +130,25 @@ class Controller {
         }
       );
 
-      return res.status(HTTP_OK).json(api.results(notes, HTTP_OK, { req }))
+      const totalCountResult = await db.sequelize.query(
+        `
+        SELECT COUNT(*) AS count
+        FROM secret_notes sn
+        LEFT JOIN categories c ON sn.category_id = c.id
+        ${whereClause}
+        `,
+        {
+          replacements,
+          type: db.Sequelize.QueryTypes.SELECT,
+        }
+      );
+
+      const results = {
+        rows: notes,
+        count: parseInt(totalCountResult[0]?.count) || 0,
+      }
+
+      return res.status(HTTP_OK).json(api.results(results, HTTP_OK, { req }))
     } catch (err) {
       console.error("Get secret notes error:", err);
       res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
@@ -268,7 +294,54 @@ class Controller {
       res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
     }
   }
-}
 
+  static async toggleFavoriteSecretNote(req, res) {
+    const t = await db.sequelize.transaction();
+    try {
+      const userId = req.user.userId;
+      const { target_id } = req.body;
+
+      const type = 'note'
+
+      const existing = await db.Favorite.findOne({
+        where: { user_id: userId, target_id, type },
+      });
+
+      if (existing) {
+        await existing.destroy({ transaction: t });
+        await t.commit();
+        return res.status(HTTP_OK).json(api.results({ favorited: false }, HTTP_OK, { req }))
+      }
+
+      const MAX_FAVORITES = 3;
+
+      const totalFavorites = await db.Favorite.count({
+        where: { user_id: userId, type },
+      });
+
+      if (totalFavorites >= MAX_FAVORITES) {
+        throw new Error(`You can only have ${MAX_FAVORITES} favorites for ${type}s`);
+      }
+
+      await db.Favorite.create(
+        {
+          user_id: userId,
+          target_id,
+          type,
+        },
+        { transaction: t }
+      );
+
+      await t.commit();
+
+      return res.status(HTTP_OK).json(api.results({ favorited: true }, HTTP_OK, { req }))
+    } catch (err) {
+      await t.rollback();
+      console.error("Toggle favorite secret note error:", err);
+      res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
+    }
+  }
+
+}
 
 module.exports = Controller;

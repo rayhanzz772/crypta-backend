@@ -15,4 +15,6 @@ router.post("/:id/decrypt", decryptLimiter, Controller.decryptSecretNote);
 router.delete("/:id/delete", Controller.deleteSecretNote);
 router.put("/:id/update", Controller.updateSecretNote);
 
+router.post("/favorite", Controller.toggleFavoriteSecretNote);
+
 module.exports = router;
