@@ -1,76 +1,81 @@
-const db = require("../../../db/models");
+const db = require('../../../db/models')
 const { HttpStatusCode } = require('axios')
-const SecretNote = db.SecretNote;
+const SecretNote = db.SecretNote
 const api = require('../../utils/api')
 const HTTP_OK = HttpStatusCode?.Ok || 200
 const INTERNAL_SERVER_ERROR = HttpStatusCode?.InternalServerError || 500
 const NOT_FOUND = HttpStatusCode?.NotFound || 404
 const BAD_REQUEST = HttpStatusCode?.BadRequest || 400
-const { encrypt, decrypt } = require("../../utils/encryption");
+const { encrypt, decrypt } = require('../../utils/encryption')
 
 class Controller {
   static async createSecretNote(req, res) {
-    const t = await db.sequelize.transaction();
+    const t = await db.sequelize.transaction()
     try {
-      const { title, note, master_password, category_id, tags = [] } = req.body;
-      const userId = req.user.userId;
+      const { title, note, master_password, category_id, tags = [] } = req.body
+      const userId = req.user.userId
 
       if (!master_password) {
-        return res.status(400).json({ success: false, message: "Master password required for encryption" });
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: 'Master password required for encryption'
+          })
       }
 
-      const kdfType = "argon2id";
+      const kdfType = 'argon2id'
       const kdfParams = {
         memoryCost: 2 ** 16,
         timeCost: 3,
-        parallelism: 1,
-      };
+        parallelism: 1
+      }
 
-      const encrypted = await encrypt(note, master_password);
+      const encrypted = await encrypt(note, master_password, kdfParams)
 
-      const item = await SecretNote.create({
-        user_id: userId,
-        title,
-        note: JSON.stringify(encrypted),
-        category_id: category_id || null,
-        kdf_type: kdfType,
-        kdf_params: kdfParams
-      },
+      const item = await SecretNote.create(
+        {
+          user_id: userId,
+          title,
+          note: JSON.stringify(encrypted),
+          category_id: category_id || null,
+          kdf_type: kdfType,
+          kdf_params: kdfParams
+        },
         { transaction: t }
-      );
+      )
 
       if (tags.length > 0) {
-        const tagRecords = [];
+        const tagRecords = []
 
         for (const tagName of tags) {
           const [tag] = await db.Tag.findOrCreate({
             where: { name: tagName.trim() },
             defaults: { name: tagName.trim() },
-            transaction: t,
-          });
-          tagRecords.push(tag);
+            transaction: t
+          })
+          tagRecords.push(tag)
         }
-        await item.addTags(tagRecords, { transaction: t });
+        await item.addTags(tagRecords, { transaction: t })
       }
-
 
       if (!item) {
-        throw new Error("Failed to create secret note");
+        throw new Error('Failed to create secret note')
       }
 
-      await t.commit();
+      await t.commit()
 
       return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
     } catch (err) {
-      await t.rollback();
-      console.error("Create secret note error:", err);
-      res.status(500).json({ success: false, message: err.message });
+      await t.rollback()
+      console.error('Create secret note error:', err)
+      res.status(500).json({ success: false, message: err.message })
     }
   }
 
   static async getSecretNotes(req, res) {
     try {
-      const userId = req.user.userId;
+      const userId = req.user.userId
 
       const limit = parseInt(req.query.per_page?.trim()) || 10
       const page = parseInt(req.query.page?.trim()) || 1
@@ -84,16 +89,16 @@ class Controller {
       const where = ['sn.user_id = :userId AND sn.deleted_at IS NULL']
 
       if (q) {
-        where.push("(sn.title ILIKE :search OR sn.note ILIKE :search)")
+        where.push('(sn.title ILIKE :search OR sn.note ILIKE :search)')
         replacements.search = `%${q}%`
       }
 
       if (category) {
-        where.push("c.name = :category")
+        where.push('c.name = :category')
         replacements.category = category
       }
 
-      const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : ""
+      const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
       const notes = await db.sequelize.query(
         `
@@ -125,9 +130,9 @@ class Controller {
         `,
         {
           replacements,
-          type: db.Sequelize.QueryTypes.SELECT,
+          type: db.Sequelize.QueryTypes.SELECT
         }
-      );
+      )
 
       const totalCountResult = await db.sequelize.query(
         `
@@ -138,30 +143,37 @@ class Controller {
         `,
         {
           replacements,
-          type: db.Sequelize.QueryTypes.SELECT,
+          type: db.Sequelize.QueryTypes.SELECT
         }
-      );
+      )
 
       const results = {
         rows: notes,
-        count: parseInt(totalCountResult[0]?.count) || 0,
+        count: parseInt(totalCountResult[0]?.count) || 0
       }
 
       return res.status(HTTP_OK).json(api.results(results, HTTP_OK, { req }))
     } catch (err) {
-      console.error("Get secret notes error:", err);
-      res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
+      console.error('Get secret notes error:', err)
+      res
+        .status(INTERNAL_SERVER_ERROR)
+        .json({ success: false, message: err.message })
     }
   }
 
   static async decryptSecretNote(req, res) {
     try {
-      const { id } = req.params;
-      const { master_password } = req.body;
-      const userId = req.user.userId;
+      const { id } = req.params
+      const { master_password } = req.body
+      const userId = req.user.userId
 
       if (!master_password) {
-        return res.status(BAD_REQUEST).json({ success: false, message: "Master password is required for decryption" });
+        return res
+          .status(BAD_REQUEST)
+          .json({
+            success: false,
+            message: 'Master password is required for decryption'
+          })
       }
 
       const notes = await db.sequelize.query(
@@ -182,31 +194,33 @@ class Controller {
         `,
         {
           replacements: { id, userId },
-          type: db.Sequelize.QueryTypes.SELECT,
+          type: db.Sequelize.QueryTypes.SELECT
         }
-      );
+      )
 
       if (!notes || notes.length === 0) {
-        return res.status(NOT_FOUND).json({ success: false, message: "Secret note not found" });
+        return res
+          .status(NOT_FOUND)
+          .json({ success: false, message: 'Secret note not found' })
       }
 
-      const { kdf_type, kdf_params } = notes[0];
+      const { kdf_type, kdf_params } = notes[0]
 
-      if (kdf_type !== "argon2id") {
+      if (kdf_type !== 'argon2id') {
         return res.status(400).json({
           success: false,
-          message: `Unsupported KDF type: ${kdf_type}`,
-        });
+          message: `Unsupported KDF type: ${kdf_type}`
+        })
       }
 
-      let encryptedObj;
+      let encryptedObj
       try {
-        encryptedObj = JSON.parse(notes[0].note);
+        encryptedObj = JSON.parse(notes[0].note)
       } catch {
-        throw new Error("Invalid encrypted data format");
+        throw new Error('Invalid encrypted data format')
       }
 
-      const decrypted = await decrypt(encryptedObj, master_password, kdf_params);
+      const decrypted = await decrypt(encryptedObj, master_password, kdf_params)
 
       const items = {
         id: notes[0].id,
@@ -217,15 +231,17 @@ class Controller {
 
       return res.status(HTTP_OK).json(api.results(items, HTTP_OK, { req }))
     } catch (err) {
-      console.error("Decrypt secret note error:", err);
-      res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
+      console.error('Decrypt secret note error:', err)
+      res
+        .status(INTERNAL_SERVER_ERROR)
+        .json({ success: false, message: err.message })
     }
   }
 
   static async deleteSecretNote(req, res) {
     try {
-      const { id } = req.params;
-      const userId = req.user.userId;
+      const { id } = req.params
+      const userId = req.user.userId
 
       const result = await db.sequelize.query(
         `
@@ -235,126 +251,172 @@ class Controller {
         `,
         {
           replacements: { id, userId },
-          type: db.Sequelize.QueryTypes.UPDATE,
+          type: db.Sequelize.QueryTypes.UPDATE
         }
-      );
+      )
 
       if (result[0] === 0) {
-        return res.status(NOT_FOUND).json({ success: false, message: "Secret note not found or already deleted" });
+        return res
+          .status(NOT_FOUND)
+          .json({
+            success: false,
+            message: 'Secret note not found or already deleted'
+          })
       }
 
-      return res.status(HTTP_OK).json({ success: true, message: "Secret note deleted successfully" });
+      return res
+        .status(HTTP_OK)
+        .json({ success: true, message: 'Secret note deleted successfully' })
     } catch (err) {
-      console.error("Delete secret note error:", err);
-      res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
+      console.error('Delete secret note error:', err)
+      res
+        .status(INTERNAL_SERVER_ERROR)
+        .json({ success: false, message: err.message })
     }
   }
 
   static async updateSecretNote(req, res) {
-    const t = await db.sequelize.transaction();
+    const t = await db.sequelize.transaction()
     try {
-      const { id } = req.params;
-      const { title, note, master_password, category_id, tags = [] } = req.body;
-      const userId = req.user.userId;
+      const { id } = req.params
+      const { title, note, master_password, category_id, tags = [] } = req.body
+      const userId = req.user.userId
 
-      const updateData = {};
+      const updateData = {}
 
-      if (title) updateData.title = title;
-      if (category_id !== undefined) updateData.category_id = category_id;
+      if (title) updateData.title = title
+      if (category_id !== undefined) updateData.category_id = category_id
 
       if (note) {
         if (!master_password) {
-          return res.status(BAD_REQUEST).json({ success: false, message: "Master password required for encryption" });
+          return res
+            .status(BAD_REQUEST)
+            .json({
+              success: false,
+              message: 'Master password required for encryption'
+            })
         }
 
-        const { data: encryptedNote, salt } = await encrypt(note, master_password);
-        updateData.note = encryptedNote;
-        updateData.salt = salt;
+        const item = await SecretNote.findOne({
+          where: { id, user_id: userId, deleted_at: null }
+        })
+
+        if (!item) {
+          return res
+            .status(NOT_FOUND)
+            .json({ success: false, message: 'Secret note not found' })
+        }
+
+        const kdfParams = item.kdf_params || {
+          memoryCost: 2 ** 16,
+          timeCost: 3,
+          parallelism: 1
+        }
+
+        const encryptionResult = await encrypt(note, master_password, kdfParams)
+        updateData.note = JSON.stringify(encryptionResult)
       }
 
       const [updatedRows] = await SecretNote.update(updateData, {
         where: { id, user_id: userId, deleted_at: null },
         transaction: t
-      });
+      })
 
       if (updatedRows === 0) {
-        await t.rollback();
-        return res.status(NOT_FOUND).json({ success: false, message: "Secret note not found or already deleted" });
+        await t.rollback()
+        return res
+          .status(NOT_FOUND)
+          .json({
+            success: false,
+            message: 'Secret note not found or already deleted'
+          })
       }
 
-      const item = await SecretNote.findOne({ where: { id, user_id: userId }, transaction: t });
+      const item = await SecretNote.findOne({
+        where: { id, user_id: userId },
+        transaction: t
+      })
 
       if (tags.length > 0) {
-        const tagRecords = [];
+        const tagRecords = []
 
         for (const tagName of tags) {
           const [tag] = await db.Tag.findOrCreate({
             where: { name: tagName.trim() },
             defaults: { name: tagName.trim() },
-            transaction: t,
-          });
-          tagRecords.push(tag);
+            transaction: t
+          })
+          tagRecords.push(tag)
         }
-        await item.setTags(tagRecords, { transaction: t });
+        await item.setTags(tagRecords, { transaction: t })
       }
 
-      await t.commit();
+      await t.commit()
 
       return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
     } catch (err) {
-      await t.rollback();
-      console.error("Update secret note error:", err);
-      res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
+      await t.rollback()
+      console.error('Update secret note error:', err)
+      res
+        .status(INTERNAL_SERVER_ERROR)
+        .json({ success: false, message: err.message })
     }
   }
 
   static async toggleFavoriteSecretNote(req, res) {
-    const t = await db.sequelize.transaction();
+    const t = await db.sequelize.transaction()
     try {
-      const userId = req.user.userId;
-      const { target_id } = req.body;
+      const userId = req.user.userId
+      const { target_id } = req.body
 
       const type = 'note'
 
       const existing = await db.Favorite.findOne({
-        where: { user_id: userId, target_id, type },
-      });
+        where: { user_id: userId, target_id, type }
+      })
 
       if (existing) {
-        await existing.destroy({ transaction: t });
-        await t.commit();
-        return res.status(HTTP_OK).json(api.results({ favorited: false }, HTTP_OK, { req }))
+        await existing.destroy({ transaction: t })
+        await t.commit()
+        return res
+          .status(HTTP_OK)
+          .json(api.results({ favorited: false }, HTTP_OK, { req }))
       }
 
-      const MAX_FAVORITES = 3;
+      const MAX_FAVORITES = 3
 
       const totalFavorites = await db.Favorite.count({
-        where: { user_id: userId, type },
-      });
+        where: { user_id: userId, type }
+      })
 
       if (totalFavorites >= MAX_FAVORITES) {
-        throw new Error(`You can only have ${MAX_FAVORITES} favorites for ${type}s`);
+        throw new Error(
+          `You can only have ${MAX_FAVORITES} favorites for ${type}s`
+        )
       }
 
       await db.Favorite.create(
         {
           user_id: userId,
           target_id,
-          type,
+          type
         },
         { transaction: t }
-      );
+      )
 
-      await t.commit();
+      await t.commit()
 
-      return res.status(HTTP_OK).json(api.results({ favorited: true }, HTTP_OK, { req }))
+      return res
+        .status(HTTP_OK)
+        .json(api.results({ favorited: true }, HTTP_OK, { req }))
     } catch (err) {
-      await t.rollback();
-      console.error("Toggle favorite secret note error:", err);
-      res.status(INTERNAL_SERVER_ERROR).json({ success: false, message: err.message });
+      await t.rollback()
+      console.error('Toggle favorite secret note error:', err)
+      res
+        .status(INTERNAL_SERVER_ERROR)
+        .json({ success: false, message: err.message })
     }
   }
-
 }
 
-module.exports = Controller;
+module.exports = Controller
