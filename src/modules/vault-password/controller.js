@@ -18,12 +18,10 @@ class Controller {
       const userId = req.user.userId
 
       if (!master_password) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: 'Master password required for encryption'
-          })
+        return res.status(400).json({
+          success: false,
+          message: 'Master password required for encryption'
+        })
       }
 
       const kdfType = 'argon2id'
@@ -262,7 +260,7 @@ class Controller {
           kdfParams
         )
         encryptedPassword = JSON.stringify(encryptionResult)
-        
+
         // ✅ FIX: Use raw query to avoid PostgreSQL type conversion issues
         await db.sequelize.query(
           `UPDATE vault_passwords 
@@ -278,8 +276,10 @@ class Controller {
             transaction: t
           }
         )
-        
-        console.log('✅ Password encrypted and updated successfully (raw query)')
+
+        console.log(
+          '✅ Password encrypted and updated successfully (raw query)'
+        )
       }
 
       let categoryRecord = null

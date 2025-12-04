@@ -16,12 +16,10 @@ class Controller {
       const userId = req.user.userId
 
       if (!master_password) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: 'Master password required for encryption'
-          })
+        return res.status(400).json({
+          success: false,
+          message: 'Master password required for encryption'
+        })
       }
 
       const kdfType = 'argon2id'
@@ -168,12 +166,10 @@ class Controller {
       const userId = req.user.userId
 
       if (!master_password) {
-        return res
-          .status(BAD_REQUEST)
-          .json({
-            success: false,
-            message: 'Master password is required for decryption'
-          })
+        return res.status(BAD_REQUEST).json({
+          success: false,
+          message: 'Master password is required for decryption'
+        })
       }
 
       const notes = await db.sequelize.query(
@@ -256,12 +252,10 @@ class Controller {
       )
 
       if (result[0] === 0) {
-        return res
-          .status(NOT_FOUND)
-          .json({
-            success: false,
-            message: 'Secret note not found or already deleted'
-          })
+        return res.status(NOT_FOUND).json({
+          success: false,
+          message: 'Secret note not found or already deleted'
+        })
       }
 
       return res
@@ -303,12 +297,10 @@ class Controller {
       if (note) {
         if (!master_password) {
           await t.rollback()
-          return res
-            .status(BAD_REQUEST)
-            .json({
-              success: false,
-              message: 'Master password required for encryption'
-            })
+          return res.status(BAD_REQUEST).json({
+            success: false,
+            message: 'Master password required for encryption'
+          })
         }
 
         const kdfParams = item.kdf_params || {
@@ -319,7 +311,7 @@ class Controller {
 
         const encryptionResult = await encrypt(note, master_password, kdfParams)
         const encryptedJson = JSON.stringify(encryptionResult)
-        
+
         // ✅ FIX: Use raw query to avoid PostgreSQL JSONB/TEXT type conversion issues
         await db.sequelize.query(
           `UPDATE secret_notes 
@@ -335,7 +327,7 @@ class Controller {
             transaction: t
           }
         )
-        
+
         console.log('✅ Note encrypted and updated successfully (raw query)')
       }
 
