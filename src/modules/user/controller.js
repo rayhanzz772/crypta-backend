@@ -43,7 +43,7 @@ class Controller {
       `,
         {
           type: db.Sequelize.QueryTypes.SELECT,
-          replacements,
+          replacements
         }
       )
 
@@ -56,18 +56,17 @@ class Controller {
       `,
         {
           type: db.Sequelize.QueryTypes.SELECT,
-          replacements,
+          replacements
         }
       )
 
       const result = {
         count: parseInt(countResult[0].total, 10),
-        rows: results,
+        rows: results
       }
 
       return res.status(HTTP_OK).json(api(result))
-    }
-    catch (err) {
+    } catch (err) {
       console.error(err)
       const code = err?.code ?? HttpStatusCode.InternalServerError
       return res.status(code).json(api(null, code, { err }))
@@ -76,19 +75,18 @@ class Controller {
 
   static async checkPassword(req, res) {
     try {
-      const { password } = req.body
+      const { master_password } = req.body
       const email = req.user.email
 
       const user = await db.User.findOne({ where: { email } })
 
-      const isValid = await bcrypt.compare(password, user.master_hash);
+      const isValid = await bcrypt.compare(master_password, user.master_hash)
       if (!isValid) {
         return res.status(HTTP_OK).json(api({ valid: false }))
       }
 
       return res.status(HTTP_OK).json(api({ valid: true }))
-    }
-    catch (err) {
+    } catch (err) {
       console.error(err)
       const code = err?.code ?? HttpStatusCode.InternalServerError
       return res.status(code).json(api(null, code, { err }))
