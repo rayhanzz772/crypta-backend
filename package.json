@@ -14,7 +14,17 @@
     "migrate:fresh": "npx sequelize-cli db:migrate:undo:all && npx sequelize-cli db:migrate",
     "seed": "npx sequelize-cli db:seed:all",
     "rollback": "npx sequelize-cli db:migrate:undo",
-    "g:migration": "npx sequelize-cli migration:generate --name"
+    "g:migration": "npx sequelize-cli migration:generate --name",
+    "migrate:undo": "npx sequelize-cli db:migrate:undo",
+    "migrate:undo:all": "npx sequelize-cli db:migrate:undo:all",
+    "seed:name": "npx sequelize-cli db:seed --seed",
+    "seed:undo": "npx sequelize-cli db:seed:undo:all",
+    "model:make": "npx sequelize-cli model:generate --name",
+    "migration:make": "npx sequelize-cli migration:generate --name",
+    "seed:make": "npx sequelize-cli seed:generate --name",
+    "make:full": "npm run model:make -- --name",
+    "make:seed": "npm run seed:make -- --name",
+    "make:all": "node src/scripts/make-all.js"
   },
   "keywords": [],
   "author": "",
@@ -28,7 +38,8 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.2.1",
-    "jsonwebtoken": "^9.0.2",
+    "jose": "^6.1.3",
+    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "mysql2": "^3.15.3",
     "node-fetch": "^3.3.2",
@@ -36,6 +47,7 @@
     "sequelize": "^6.37.7",
     "sequelize-cli": "^6.6.3",
     "sha1": "^1.1.1",
+    "slugify": "^1.6.6",
     "zod": "^4.1.12"
   },
   "devDependencies": {

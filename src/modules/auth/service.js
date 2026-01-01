@@ -5,6 +5,7 @@ const db = require('../../../db/models')
 const User = db.User
 
 exports.login = async (email, master_password) => {
+  console.log(email, master_password)
   if (!email || !master_password) {
     throw new Error('Email and password are required')
   }

@@ -7,9 +7,9 @@ const { checkPasswordBreach } = require('../../utils/pwnedCheck')
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { email, master_password } = req.body
 
-    const { token, user } = await authService.login(email, password)
+    const { token, user } = await authService.login(email, master_password)
 
     res.cookie('token', token, {
       httpOnly: true,
@@ -37,12 +37,12 @@ exports.login = async (req, res) => {
 
 exports.register = async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { email, master_password } = req.body
 
-    if (!email || !password) {
+    if (!email || !master_password) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required'
+        message: 'Email and master_password are required'
       })
     }
 

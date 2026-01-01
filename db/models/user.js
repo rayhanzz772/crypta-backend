@@ -8,17 +8,12 @@ module.exports = (sequelize, DataTypes) => {
       User.hasMany(models.VaultPassword, {
         foreignKey: 'user_id',
         as: 'vaultPasswords'
-      });
-
-      User.hasMany(models.ApiKey, {
-        foreignKey: 'user_id',
-        as: 'apiKeys'
-      });
+      })
 
       User.hasMany(models.Favorite, {
         foreignKey: 'user_id',
         as: 'favorites'
-      });
+      })
     }
   }
 
@@ -27,7 +22,7 @@ module.exports = (sequelize, DataTypes) => {
       id: {
         type: DataTypes.STRING,
         primaryKey: true,
-        defaultValue: () => cuid(),
+        defaultValue: () => cuid()
       },
       email: { type: DataTypes.STRING(100), allowNull: false, unique: true },
       master_hash: { type: DataTypes.STRING, allowNull: false },
