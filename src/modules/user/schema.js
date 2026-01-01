@@ -2,7 +2,7 @@ const { z } = require('zod')
 
 // Validation for checking password
 const checkPasswordSchema = z.object({
-  password: z
+  master_password: z
     .string({ required_error: 'Password is required' })
     .min(1, 'Password cannot be empty')
 })
