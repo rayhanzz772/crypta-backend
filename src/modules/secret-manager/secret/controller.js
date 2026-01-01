@@ -25,11 +25,20 @@ async function createSecret(req, res) {
       .json({ success: false, message: 'Secret already exists' })
   }
 
-  // Convert labels array to JSON object format
   const labelsObject = labels.reduce((acc, label) => {
     acc[label.key] = label.value
     return acc
   }, {})
+
+  const activeSecretsCount = await Secret.count({
+    where: { project_id, status: 'active' }
+  })
+
+  if (activeSecretsCount >= 5) {
+    return res.status(400).json({
+      message: 'Maximum limit of 5 active secrets reached for this project'
+    })
+  }
 
   const secret = await Secret.create({
     id: cuid(),
@@ -56,14 +65,23 @@ async function listSecrets(req, res) {
   const { Secret } = req.models
   const { project_id } = req.params
 
-  const items = await Secret.findAll({
+  // Get pagination parameters from query string
+  const page = parseInt(req.query.page) || 1
+  const perPage = parseInt(req.query.per_page) || 10
+
+  // Calculate offset for pagination
+  const offset = (page - 1) * perPage
+
+  const { count, rows } = await Secret.findAndCountAll({
     where: { project_id, status: 'active' },
     attributes: ['id', 'name', 'labels', 'status', 'created_at'],
-    order: [['created_at', 'DESC']]
+    order: [['created_at', 'DESC']],
+    limit: perPage,
+    offset: offset
   })
 
   // Parse labels JSON for each secret
-  const formattedItems = items.map((item) => {
+  const formattedItems = rows.map((item) => {
     const itemData = item.toJSON()
     return {
       ...itemData,
@@ -74,7 +92,12 @@ async function listSecrets(req, res) {
     }
   })
 
-  return res.status(HTTP_OK).json(api.results(formattedItems, HTTP_OK, { req }))
+  const results = {
+    rows: formattedItems,
+    count: count
+  }
+
+  return res.status(HTTP_OK).json(api.results(results, HTTP_OK, { req }))
 }
 
 async function getSecret(req, res) {

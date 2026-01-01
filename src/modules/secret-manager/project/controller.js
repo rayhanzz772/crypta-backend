@@ -25,6 +25,16 @@ async function createProject(req, res) {
     })
   }
 
+  const activeProjectsCount = await Project.count({
+    where: { owner_id: ownerId }
+  })
+
+  if (activeProjectsCount >= 5) {
+    return res.status(400).json({
+      message: 'Maximum limit of 5 projects reached for this user'
+    })
+  }
+
   await Project.create({
     id: cuid(),
     name,
@@ -40,11 +50,26 @@ async function getAllProjects(req, res) {
   const { Project } = req.models
   const ownerId = req.user.userId
 
-  const projects = await Project.findAll({
-    where: { owner_id: ownerId }
+  // Get pagination parameters from query string
+  const page = parseInt(req.query.page) || 1
+  const perPage = parseInt(req.query.per_page) || 10
+
+  // Calculate offset for pagination
+  const offset = (page - 1) * perPage
+
+  const { count, rows } = await Project.findAndCountAll({
+    where: { owner_id: ownerId },
+    limit: perPage,
+    offset: offset,
+    order: [['created_at', 'DESC']]
   })
 
-  return res.status(HTTP_OK).json(api.results(projects, HTTP_OK, { req }))
+  const results = {
+    rows: rows,
+    count: count
+  }
+
+  return res.status(HTTP_OK).json(api.results(results, HTTP_OK, { req }))
 }
 
 async function getProjectById(req, res) {
