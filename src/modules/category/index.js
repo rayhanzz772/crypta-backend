@@ -1,8 +1,13 @@
-const router = require('express').Router();
-const authentication = require("../../middleware/authMiddleware");
-const Controller = require('./controller');
+const router = require('express').Router()
+const Controller = require('./controller')
+const validateRequest = require('../../middleware/validateRequest')
+const { createCategorySchema } = require('./schema')
 
-router.post('/', Controller.createCategory);
-router.get('/', Controller.getCategories);
+router.post(
+  '/',
+  validateRequest({ body: createCategorySchema }),
+  Controller.createCategory
+)
+router.get('/', Controller.getCategories)
 
-module.exports = router;
+module.exports = router

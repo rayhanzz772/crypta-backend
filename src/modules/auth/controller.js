@@ -55,7 +55,7 @@ exports.register = async (req, res) => {
       })
     }
 
-    const breachCount = await checkPasswordBreach(password)
+    const breachCount = await checkPasswordBreach(master_password)
     if (breachCount > 0) {
       return res.status(400).json({
         success: false,
@@ -65,7 +65,7 @@ exports.register = async (req, res) => {
 
     // Hash master password sebelum disimpan
     const saltRounds = 12
-    const hash = await bcrypt.hash(password, saltRounds)
+    const hash = await bcrypt.hash(master_password, saltRounds)
 
     // Simpan ke database
     const user = await User.create({
