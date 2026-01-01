@@ -9,13 +9,27 @@ async function listServiceAccounts(req, res) {
   const { ServiceAccount } = req.models
   const { project_id } = req.params
 
-  const items = await ServiceAccount.findAll({
+  // Get pagination parameters from query string
+  const page = parseInt(req.query.page) || 1
+  const perPage = parseInt(req.query.per_page) || 10
+
+  // Calculate offset for pagination
+  const offset = (page - 1) * perPage
+
+  const { count, rows } = await ServiceAccount.findAndCountAll({
     where: { project_id, status: 'active' },
     attributes: ['id', 'client_id', 'status', 'created_at'],
-    order: [['created_at', 'DESC']]
+    order: [['created_at', 'DESC']],
+    limit: perPage,
+    offset: offset
   })
 
-  return res.status(HTTP_OK).json(api.results(items, HTTP_OK, { req }))
+  const results = {
+    rows: rows,
+    count: count
+  }
+
+  return res.status(HTTP_OK).json(api.results(results, HTTP_OK, { req }))
 }
 
 async function createServiceAccount(req, res) {
@@ -26,6 +40,15 @@ async function createServiceAccount(req, res) {
   const project = await Project.findByPk(project_id)
   if (!project) {
     return res.status(404).json({ message: 'Project not found' })
+  }
+
+  const activeServiceAccountsCount = await ServiceAccount.count({
+    where: { project_id, status: 'active' }
+  })
+  if (activeServiceAccountsCount >= 5) {
+    return res.status(400).json({
+      message: 'Maximum limit of 5 service accounts reached for this project'
+    })
   }
 
   const normalizedName = slugify(name, { lower: true, strict: true })

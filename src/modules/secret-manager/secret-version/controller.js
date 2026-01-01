@@ -32,6 +32,16 @@ async function createSecretVersion(req, res) {
     )
   }
 
+  const activeVersionsCount = await SecretVersion.count({
+    where: { secret_id, status: 'enabled' }
+  })
+  if (activeVersionsCount >= 5) {
+    return res.status(400).json({
+      message:
+        'Maximum limit of 5 active secret versions reached for this secret'
+    })
+  }
+
   await SecretVersion.create({
     id: cuid(),
     secret_id,
