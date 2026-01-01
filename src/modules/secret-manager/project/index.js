@@ -1,10 +1,9 @@
 const express = require('express')
 const router = express.Router()
-
+const validateRequest = require('../../../middleware/validateRequest')
+const { createProjectSchema } = require('./schema')
 const { createProject } = require('./controller')
-// const validate = require('../../middlewares/validate')
-// const createProjectSchema = require('./validation/create-project.schema')
 
-router.post('/', createProject)
+router.post('/', validateRequest({ body: createProjectSchema }), createProject)
 
 module.exports = router

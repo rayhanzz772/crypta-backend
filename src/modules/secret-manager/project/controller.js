@@ -1,5 +1,8 @@
 const cuid = require('cuid')
 const slugify = require('slugify')
+const api = require('../../../utils/api')
+const { HttpStatusCode } = require('axios')
+const HTTP_OK = HttpStatusCode?.Ok || 200
 
 async function createProject(req, res) {
   const { Project } = req.models
@@ -22,7 +25,7 @@ async function createProject(req, res) {
     })
   }
 
-  const project = await Project.create({
+  await Project.create({
     id: cuid(),
     name,
     slug,
@@ -30,15 +33,7 @@ async function createProject(req, res) {
     status: 'active'
   })
 
-  return res.status(201).json({
-    success: true,
-    data: {
-      id: project.id,
-      name: project.name,
-      slug: project.slug,
-      status: project.status
-    }
-  })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 module.exports = {

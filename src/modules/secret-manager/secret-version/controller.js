@@ -1,5 +1,8 @@
 const cuid = require('cuid')
 const { encryptSecret } = require('../../../utils/secret-manager/encrypt')
+const api = require('../../../utils/api')
+const { HttpStatusCode } = require('axios')
+const HTTP_OK = HttpStatusCode?.Ok || 200
 
 async function createSecretVersion(req, res) {
   const { Secret, SecretVersion } = req.models
@@ -45,15 +48,7 @@ async function createSecretVersion(req, res) {
     status: 'enabled'
   })
 
-  return res.status(201).json({
-    success: true,
-    data: {
-      id: version.id,
-      secret_id,
-      version: version.version,
-      status: version.status
-    }
-  })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 async function listSecretVersions(req, res) {
@@ -66,7 +61,7 @@ async function listSecretVersions(req, res) {
     order: [['version', 'DESC']]
   })
 
-  res.json({ success: true, data: items })
+  return res.status(HTTP_OK).json(api.results(items, HTTP_OK, { req }))
 }
 
 module.exports = { createSecretVersion, listSecretVersions }

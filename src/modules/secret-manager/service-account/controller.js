@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const cuid = require('cuid')
 const slugify = require('slugify')
+const api = require('../../../utils/api')
 
 async function listServiceAccounts(req, res) {
   const { ServiceAccount } = req.models
@@ -12,7 +13,7 @@ async function listServiceAccounts(req, res) {
     order: [['created_at', 'DESC']]
   })
 
-  res.json({ success: true, data: items })
+  return res.status(HTTP_OK).json(api.results(items, HTTP_OK, { req }))
 }
 
 async function createServiceAccount(req, res) {
@@ -54,14 +55,7 @@ async function createServiceAccount(req, res) {
     status: 'active'
   })
 
-  return res.status(201).json({
-    success: true,
-    data: {
-      id: sa.id,
-      client_id: sa.client_id,
-      private_key: privateKey
-    }
-  })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 async function deleteServiceAccount(req, res) {
@@ -73,7 +67,7 @@ async function deleteServiceAccount(req, res) {
 
   await sa.update({ status: 'disabled' })
 
-  res.json({ success: true })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 module.exports = {

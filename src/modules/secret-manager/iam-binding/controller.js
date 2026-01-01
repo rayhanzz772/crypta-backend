@@ -1,4 +1,5 @@
 const cuid = require('cuid')
+const api = require('../../../utils/api')
 
 async function createBinding(req, res) {
   const { IamBinding, ServiceAccount, Secret } = req.models
@@ -54,15 +55,7 @@ async function createBinding(req, res) {
     role: 'secret.accessor'
   })
 
-  return res.status(201).json({
-    success: true,
-    data: {
-      id: binding.id,
-      secret_id,
-      service_account_id,
-      role: binding.role
-    }
-  })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 async function listBindings(req, res) {
@@ -78,7 +71,7 @@ async function listBindings(req, res) {
     order: [['created_at', 'DESC']]
   })
 
-  res.json({ success: true, data: items })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 async function listBindings(req, res) {
@@ -94,7 +87,7 @@ async function listBindings(req, res) {
     order: [['created_at', 'DESC']]
   })
 
-  res.json({ success: true, data: items })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 async function deleteBinding(req, res) {
@@ -107,7 +100,7 @@ async function deleteBinding(req, res) {
   }
 
   await binding.destroy()
-  res.json({ success: true })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 module.exports = { createBinding, listBindings, deleteBinding }

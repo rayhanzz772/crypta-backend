@@ -1,4 +1,7 @@
 const cuid = require('cuid')
+const api = require('../../../utils/api')
+const { HttpStatusCode } = require('axios')
+const HTTP_OK = HttpStatusCode?.Ok || 200
 
 async function createSecret(req, res) {
   const { Project, Secret } = req.models
@@ -22,7 +25,7 @@ async function createSecret(req, res) {
       .json({ success: false, message: 'Secret already exists' })
   }
 
-  const secret = await Secret.create({
+  await Secret.create({
     id: cuid(),
     project_id,
     name,
@@ -30,15 +33,7 @@ async function createSecret(req, res) {
     status: 'active'
   })
 
-  return res.status(201).json({
-    success: true,
-    data: {
-      id: secret.id,
-      project_id: secret.project_id,
-      name: secret.name,
-      status: secret.status
-    }
-  })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 async function listSecrets(req, res) {
@@ -51,7 +46,7 @@ async function listSecrets(req, res) {
     order: [['created_at', 'DESC']]
   })
 
-  res.json({ success: true, data: items })
+  return res.status(HTTP_OK).json(api.results(items, HTTP_OK, { req, items }))
 }
 
 async function getSecret(req, res) {
@@ -66,7 +61,7 @@ async function getSecret(req, res) {
     return res.status(404).json({ success: false, message: 'Not found' })
   }
 
-  res.json({ success: true, data: secret })
+  return res.status(HTTP_OK).json(api.results(secret, HTTP_OK, { req }))
 }
 
 async function deleteSecret(req, res) {
@@ -79,7 +74,7 @@ async function deleteSecret(req, res) {
   }
 
   await secret.update({ status: 'disabled' })
-  res.json({ success: true })
+  return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 
 module.exports = { createSecret, listSecrets, getSecret, deleteSecret }
