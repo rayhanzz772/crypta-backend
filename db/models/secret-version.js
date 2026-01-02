@@ -63,11 +63,17 @@ module.exports = (sequelize) =>
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: DataTypes.NOW
+      },
+      deleted_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        defaultValue: null
       }
     },
     {
       tableName: 'secret_versions',
       timestamps: true,
+      paranoid: true,
       underscored: true
     }
   )

@@ -17,7 +17,7 @@ async function listServiceAccounts(req, res) {
   const offset = (page - 1) * perPage
 
   const { count, rows } = await ServiceAccount.findAndCountAll({
-    where: { project_id, status: 'active' },
+    where: { project_id, status: 'active', deleted_at: null },
     attributes: ['id', 'client_id', 'status', 'created_at'],
     order: [['created_at', 'DESC']],
     limit: perPage,
@@ -95,14 +95,32 @@ async function createServiceAccount(req, res) {
 }
 
 async function deleteServiceAccount(req, res) {
-  const { ServiceAccount } = req.models
+  const { ServiceAccount, IamBinding } = req.models
   const { service_account_id } = req.params
 
   const sa = await ServiceAccount.findByPk(service_account_id)
   if (!sa) return res.status(404).json({ message: 'Not found' })
 
-  await sa.update({ status: 'disabled' })
-  await sa.update({ deleted_at: new Date() })
+  const now = new Date()
+
+  await sa.update({
+    status: 'disabled',
+    deleted_at: now
+  })
+
+  await IamBinding.update(
+    {
+      deleted_at: now
+    },
+    {
+      where: {
+        subject_type: 'service_account',
+        subject_id: sa.id,
+        deleted_at: null
+      }
+    }
+  )
+
   return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
 }
 

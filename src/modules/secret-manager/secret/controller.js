@@ -136,7 +136,7 @@ async function deleteSecret(req, res) {
   }
 
   await SecretVersion.update(
-    { status: 'disabled' },
+    { status: 'disabled', deleted_at: new Date() },
     {
       where: {
         secret_id: secret.id,

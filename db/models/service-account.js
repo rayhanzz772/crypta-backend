@@ -40,6 +40,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM('active', 'disabled'),
         allowNull: false,
         defaultValue: 'active'
+      },
+      deleted_at: {
+        type: DataTypes.DATE,
+        allowNull: true
       }
     },
     {

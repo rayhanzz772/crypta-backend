@@ -58,7 +58,7 @@ async function getAllProjects(req, res) {
   const offset = (page - 1) * perPage
 
   const { count, rows } = await Project.findAndCountAll({
-    where: { owner_id: ownerId },
+    where: { owner_id: ownerId, deleted_at: null },
     limit: perPage,
     offset: offset,
     order: [['created_at', 'DESC']]

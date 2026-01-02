@@ -64,7 +64,10 @@ async function listBindings(req, res) {
   const { IamBinding } = req.models
   const { subject_id, resource_id } = req.query
 
-  const where = {}
+  const where = {
+    deleted_at: null
+  }
+
   if (subject_id) where.subject_id = subject_id
   if (resource_id) where.resource_id = resource_id
 

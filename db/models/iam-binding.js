@@ -36,12 +36,17 @@ module.exports = (sequelize, DataTypes) => {
       resource_id: {
         type: DataTypes.STRING,
         allowNull: false
+      },
+      deleted_at: {
+        type: DataTypes.DATE,
+        allowNull: true
       }
     },
     {
       sequelize,
       modelName: 'IamBinding',
       tableName: 'iam_bindings',
+      paranoid: true,
       timestamps: true,
       underscored: true
     }
