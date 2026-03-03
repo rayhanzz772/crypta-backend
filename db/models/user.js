@@ -31,6 +31,21 @@ module.exports = (sequelize, DataTypes) => {
       },
       email: { type: DataTypes.STRING(100), allowNull: false, unique: true },
       master_hash: { type: DataTypes.STRING, allowNull: false },
+
+      // --- MEK / Recovery Key columns ---
+      kek_salt: { type: DataTypes.STRING(64), allowNull: true },
+      encrypted_mek_by_password: { type: DataTypes.BLOB, allowNull: true },
+      mek_pw_iv: { type: DataTypes.BLOB, allowNull: true },
+      mek_pw_tag: { type: DataTypes.BLOB, allowNull: true },
+      encrypted_mek_by_recovery: { type: DataTypes.BLOB, allowNull: true },
+      mek_rc_iv: { type: DataTypes.BLOB, allowNull: true },
+      mek_rc_tag: { type: DataTypes.BLOB, allowNull: true },
+      mek_version: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+      },
+
       created_at: {
         type: DataTypes.DATE,
         allowNull: false,

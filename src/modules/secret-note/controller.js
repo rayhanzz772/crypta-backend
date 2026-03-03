@@ -6,36 +6,87 @@ const HTTP_OK = HttpStatusCode?.Ok || 200
 const INTERNAL_SERVER_ERROR = HttpStatusCode?.InternalServerError || 500
 const NOT_FOUND = HttpStatusCode?.NotFound || 404
 const BAD_REQUEST = HttpStatusCode?.BadRequest || 400
+
+// Legacy encryption (Argon2id per-item)
 const { encrypt, decrypt } = require('../../utils/encryption')
+// MEK-based encryption (direct AES-256-GCM)
+const { encryptData, decryptData } = require('../../utils/mek')
+
+/**
+ * Helper: Get user's mek_version
+ */
+async function getUserMekVersion(userId) {
+  const user = await db.User.findByPk(userId, {
+    attributes: ['mek_version']
+  })
+  return user ? user.mek_version : 0
+}
+
+/**
+ * Helper: Parse MEK from request body
+ */
+function parseMEK(mekHex) {
+  if (!mekHex || typeof mekHex !== 'string') return null
+  const buf = Buffer.from(mekHex, 'hex')
+  if (buf.length !== 32) return null
+  return buf
+}
 
 class Controller {
   static async createSecretNote(req, res) {
     const t = await db.sequelize.transaction()
     try {
-      const { title, note, master_password, category_id, tags = [] } = req.body
+      const {
+        title,
+        note,
+        master_password,
+        mek: mekHex,
+        category_id,
+        tags = []
+      } = req.body
       const userId = req.user.userId
 
-      if (!master_password) {
-        return res.status(400).json({
-          success: false,
-          message: 'Master password required for encryption'
-        })
-      }
+      const mekVersion = await getUserMekVersion(userId)
+      let encryptedNote
+      let kdfType
+      let kdfParams
 
-      const kdfType = 'argon2id'
-      const kdfParams = {
-        memoryCost: 2 ** 16,
-        timeCost: 3,
-        parallelism: 1
+      if (mekVersion >= 1) {
+        // --- MEK path ---
+        const mek = parseMEK(mekHex)
+        if (!mek) {
+          return res.status(400).json({
+            success: false,
+            message: 'MEK is required for encryption (obtain from login)'
+          })
+        }
+        const encrypted = encryptData(note, mek)
+        encryptedNote = JSON.stringify(encrypted)
+        kdfType = 'mek'
+        kdfParams = null
+      } else {
+        // --- Legacy path ---
+        if (!master_password) {
+          return res.status(400).json({
+            success: false,
+            message: 'Master password required for encryption'
+          })
+        }
+        kdfType = 'argon2id'
+        kdfParams = {
+          memoryCost: 2 ** 16,
+          timeCost: 3,
+          parallelism: 1
+        }
+        const encrypted = await encrypt(note, master_password, kdfParams)
+        encryptedNote = JSON.stringify(encrypted)
       }
-
-      const encrypted = await encrypt(note, master_password, kdfParams)
 
       const item = await SecretNote.create(
         {
           user_id: userId,
           title,
-          note: JSON.stringify(encrypted),
+          note: encryptedNote,
           category_id: category_id || null,
           kdf_type: kdfType,
           kdf_params: kdfParams
@@ -162,15 +213,8 @@ class Controller {
   static async decryptSecretNote(req, res) {
     try {
       const { id } = req.params
-      const { master_password } = req.body
+      const { master_password, mek: mekHex } = req.body
       const userId = req.user.userId
-
-      if (!master_password) {
-        return res.status(BAD_REQUEST).json({
-          success: false,
-          message: 'Master password is required for decryption'
-        })
-      }
 
       const notes = await db.sequelize.query(
         `
@@ -200,15 +244,6 @@ class Controller {
           .json({ success: false, message: 'Secret note not found' })
       }
 
-      const { kdf_type, kdf_params } = notes[0]
-
-      if (kdf_type !== 'argon2id') {
-        return res.status(400).json({
-          success: false,
-          message: `Unsupported KDF type: ${kdf_type}`
-        })
-      }
-
       let encryptedObj
       try {
         encryptedObj = JSON.parse(notes[0].note)
@@ -216,7 +251,36 @@ class Controller {
         throw new Error('Invalid encrypted data format')
       }
 
-      const decrypted = await decrypt(encryptedObj, master_password, kdf_params)
+      let decrypted
+
+      // Determine decryption method
+      if (notes[0].kdf_type === 'mek' || encryptedObj.ciphertext) {
+        // --- MEK path ---
+        const mek = parseMEK(mekHex)
+        if (!mek) {
+          return res.status(BAD_REQUEST).json({
+            success: false,
+            message: 'MEK is required for decryption (obtain from login)'
+          })
+        }
+        decrypted = decryptData(encryptedObj, mek)
+      } else {
+        // --- Legacy path ---
+        if (!master_password) {
+          return res.status(BAD_REQUEST).json({
+            success: false,
+            message: 'Master password is required for decryption'
+          })
+        }
+        const { kdf_type, kdf_params } = notes[0]
+        if (kdf_type !== 'argon2id') {
+          return res.status(400).json({
+            success: false,
+            message: `Unsupported KDF type: ${kdf_type}`
+          })
+        }
+        decrypted = await decrypt(encryptedObj, master_password, kdf_params)
+      }
 
       const items = {
         id: notes[0].id,
@@ -284,10 +348,16 @@ class Controller {
     const t = await db.sequelize.transaction()
     try {
       const { id } = req.params
-      const { title, note, master_password, category_id, tags = [] } = req.body
+      const {
+        title,
+        note,
+        master_password,
+        mek: mekHex,
+        category_id,
+        tags = []
+      } = req.body
       const userId = req.user.userId
 
-      // First, fetch the item to verify it exists and get KDF params
       const item = await SecretNote.findOne({
         where: { id, user_id: userId, deleted_at: null },
         transaction: t
@@ -306,31 +376,52 @@ class Controller {
       if (category_id !== undefined) updateData.category_id = category_id
 
       if (note) {
-        if (!master_password) {
-          await t.rollback()
-          return res.status(BAD_REQUEST).json({
-            success: false,
-            message: 'Master password required for encryption'
-          })
+        const mekVersion = await getUserMekVersion(userId)
+        let encryptedJson
+
+        if (mekVersion >= 1) {
+          // --- MEK path ---
+          const mek = parseMEK(mekHex)
+          if (!mek) {
+            await t.rollback()
+            return res.status(BAD_REQUEST).json({
+              success: false,
+              message: 'MEK is required for encryption'
+            })
+          }
+          const encrypted = encryptData(note, mek)
+          encryptedJson = JSON.stringify(encrypted)
+        } else {
+          // --- Legacy path ---
+          if (!master_password) {
+            await t.rollback()
+            return res.status(BAD_REQUEST).json({
+              success: false,
+              message: 'Master password required for encryption'
+            })
+          }
+          const kdfParams = item.kdf_params || {
+            memoryCost: 2 ** 16,
+            timeCost: 3,
+            parallelism: 1
+          }
+          const encryptionResult = await encrypt(
+            note,
+            master_password,
+            kdfParams
+          )
+          encryptedJson = JSON.stringify(encryptionResult)
         }
 
-        const kdfParams = item.kdf_params || {
-          memoryCost: 2 ** 16,
-          timeCost: 3,
-          parallelism: 1
-        }
-
-        const encryptionResult = await encrypt(note, master_password, kdfParams)
-        const encryptedJson = JSON.stringify(encryptionResult)
-
-        // ✅ FIX: Use raw query to avoid PostgreSQL JSONB/TEXT type conversion issues
         await db.sequelize.query(
           `UPDATE secret_notes 
-           SET note = :note, updated_at = CURRENT_TIMESTAMP
+           SET note = :note, kdf_type = :kdf_type, updated_at = CURRENT_TIMESTAMP
            WHERE id = :id AND user_id = :userId AND deleted_at IS NULL`,
           {
             replacements: {
               note: encryptedJson,
+              kdf_type:
+                (await getUserMekVersion(userId)) >= 1 ? 'mek' : 'argon2id',
               id,
               userId
             },
@@ -338,11 +429,9 @@ class Controller {
             transaction: t
           }
         )
-
-        console.log('✅ Note encrypted and updated successfully (raw query)')
       }
 
-      // Update other fields using Sequelize ORM
+      // Update other fields
       if (title || category_id !== undefined) {
         await item.update(updateData, { transaction: t })
       }
