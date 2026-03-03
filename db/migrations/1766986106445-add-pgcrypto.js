@@ -5,7 +5,7 @@ module.exports = {
       'CREATE EXTENSION IF NOT EXISTS pgcrypto;'
     )
   },
-  async down() {
+  async down(queryInterface, Sequelize) {
     await queryInterface.sequelize.query('DROP EXTENSION IF EXISTS pgcrypto;')
   }
 }
