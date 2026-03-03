@@ -1,7 +1,7 @@
 'use strict'
 
 const cuid = require('cuid')
-const { encryptSecret } = require('../seeders/helpers/encryption')
+const { encryptSecret } = require('./helpers/encryption')
 
 module.exports = {
   async up(queryInterface) {
