@@ -19,5 +19,9 @@ module.exports = {
         role: 'secret.accessor'
       }
     ])
+  },
+
+  async down(queryInterface, Sequelize) {
+    await queryInterface.bulkDelete('iam_bindings', null, {})
   }
 }

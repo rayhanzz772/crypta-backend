@@ -28,5 +28,9 @@ module.exports = {
         updated_at: new Date()
       }
     ])
+  },
+
+  async down(queryInterface, Sequelize) {
+    await queryInterface.bulkDelete('service_accounts', null, {})
   }
 }

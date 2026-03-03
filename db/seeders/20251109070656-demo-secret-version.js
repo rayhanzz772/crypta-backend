@@ -18,6 +18,7 @@ module.exports = {
         project_id: project[0].id,
         name: 'DB_PASSWORD',
         labels: JSON.stringify({ env: 'prod', type: 'database' }),
+        status: 'active',
         created_by: 'system',
         created_at: new Date(),
         updated_at: new Date()
@@ -45,5 +46,10 @@ module.exports = {
         updated_at: new Date()
       }
     ])
+  },
+
+  async down(queryInterface, Sequelize) {
+    await queryInterface.bulkDelete('secret_versions', null, {})
+    await queryInterface.bulkDelete('secrets', null, {})
   }
 }
