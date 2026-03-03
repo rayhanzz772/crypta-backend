@@ -2,8 +2,6 @@ const express = require('express')
 const router = express.Router()
 const { authMiddleware } = require('../middleware/authMiddleware')
 const { privateLimiter } = require('../middleware/rateLimiter')
-const injectModels = require('../middleware/injectModels')
-const models = require('../../db/models')
 
 router.use(privateLimiter)
 router.get('/status', (req, res) => {
