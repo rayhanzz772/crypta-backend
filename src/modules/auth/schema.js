@@ -23,21 +23,17 @@ const registerSchema = z.object({
     )
 })
 
-const recoverPasswordSchema = z.object({
-  email: z
-    .string({ required_error: 'Email is required' })
-    .email('Invalid email format'),
-  recovery_key: z
-    .string({ required_error: 'Recovery key is required' })
-    .min(1, 'Recovery key cannot be empty'),
+const verifyRecoverySchema = z.object({
+  email: z.string().email('Invalid email format'),
+  recovery_key: z.string().min(1, 'Recovery key is required')
+})
+
+const resetPasswordSchema = z.object({
   new_password: z
-    .string({ required_error: 'New password is required' })
+    .string()
     .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must not exceed 128 characters')
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-      'Password must contain at least one uppercase, one lowercase, and one number'
-    )
+    .max(128)
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password mixed complex required')
 })
 
 const migrateToMekSchema = z.object({
@@ -49,6 +45,7 @@ const migrateToMekSchema = z.object({
 module.exports = {
   loginSchema,
   registerSchema,
-  recoverPasswordSchema,
+  verifyRecoverySchema,
+  resetPasswordSchema,
   migrateToMekSchema
 }

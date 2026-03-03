@@ -163,7 +163,6 @@ exports.login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     })
 
-    // If user is on MEK system, decrypt MEK and return to client
     let mekHex = null
     if (user.mek_version >= 1 && user.encrypted_mek_by_password) {
       const kek = await deriveKEK(master_password, user.kek_salt)
@@ -187,7 +186,6 @@ exports.login = async (req, res) => {
           createdAt: user.createdAt,
           mek_version: user.mek_version
         },
-        // MEK is sent to client — client stores in memory for subsequent operations
         mek: mekHex
       }
     })
@@ -200,9 +198,6 @@ exports.login = async (req, res) => {
   }
 }
 
-/**
- * POST /auth/logout
- */
 exports.logout = async (req, res) => {
   try {
     res.clearCookie('token')
@@ -216,124 +211,95 @@ exports.logout = async (req, res) => {
   }
 }
 
-/**
- * POST /auth/recover-password
- *
- * Account recovery flow:
- * 1. User provides email + recovery_key + new_password
- * 2. Parse recovery key → Buffer
- * 3. Unwrap MEK using recovery key
- * 4. Hash new password (bcrypt)
- * 5. Derive new KEK from new password (Argon2id)
- * 6. Re-wrap MEK with new KEK
- * 7. Update user record
- */
-exports.recoverPassword = async (req, res) => {
+exports.verifyRecoveryKey = async (req, res) => {
   try {
-    const { email, recovery_key, new_password } = req.body
+    const { email, recovery_key } = req.body
 
-    // Find user
     const user = await User.findOne({ where: { email } })
-    if (!user) {
-      // Don't reveal if email exists or not
+    if (!user || user.mek_version < 1 || !user.encrypted_mek_by_recovery) {
       return res.status(400).json({
         success: false,
-        message: 'Recovery failed. Please check your credentials.'
+        message: 'Recovery is not available for this account'
       })
     }
 
-    // User must be on MEK system
-    if (user.mek_version < 1 || !user.encrypted_mek_by_recovery) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Account recovery is not available. Please migrate your account first.'
-      })
-    }
+    const recoveryKeyBuffer = parseRecoveryKey(recovery_key)
+    const mek = unwrapMEK(
+      user.encrypted_mek_by_recovery,
+      recoveryKeyBuffer,
+      user.mek_rc_iv,
+      user.mek_rc_tag
+    )
 
-    // Step 1: Parse recovery key
-    let recoveryKeyBuffer
-    try {
-      recoveryKeyBuffer = parseRecoveryKey(recovery_key)
-    } catch {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid recovery key format'
-      })
-    }
-
-    // Step 2: Unwrap MEK using recovery key
-    let mek
-    try {
-      mek = unwrapMEK(
-        user.encrypted_mek_by_recovery,
-        recoveryKeyBuffer,
-        user.mek_rc_iv,
-        user.mek_rc_tag
-      )
-    } catch {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid recovery key. Decryption failed.'
-      })
-    }
-
-    // Step 3: Check new password against breaches
-    const breachCount = await checkPasswordBreach(new_password)
-    if (breachCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Password baru ditemukan ${breachCount} kali dalam kebocoran data publik. Gunakan password yang lebih aman.`
-      })
-    }
-
-    // Step 4: Hash new password for authentication
-    const saltRounds = 12
-    const newPasswordHash = await bcrypt.hash(new_password, saltRounds)
-
-    // Step 5: Derive new KEK from new password
-    const newKekSalt = generateSalt()
-    const newKek = await deriveKEK(new_password, newKekSalt)
-
-    // Step 6: Re-wrap MEK with new KEK
-    const newMekByPassword = wrapMEK(mek, newKek)
-
-    // Step 7: Update user record
-    await user.update({
-      master_hash: newPasswordHash,
-      kek_salt: newKekSalt,
-      encrypted_mek_by_password: newMekByPassword.encrypted,
-      mek_pw_iv: newMekByPassword.iv,
-      mek_pw_tag: newMekByPassword.tag
-      // encrypted_mek_by_recovery stays the same — recovery key unchanged
-    })
+    req.session.recovery_mek = mek.toString('hex')
+    req.session.recovery_user_id = user.id
 
     return res.json({
       success: true,
-      message:
-        'Password recovered successfully. You can now login with your new password.'
+      message: 'Recovery key verified successfully. Proceed to reset password.'
     })
   } catch (error) {
-    console.error('Recovery error:', error)
-    return res.status(500).json({
+    console.error('Verify Recovery error:', error)
+    return res.status(400).json({
       success: false,
-      message: error.message || 'Recovery failed'
+      message: 'Invalid recovery key or email'
     })
   }
 }
 
-/**
- * POST /auth/migrate-to-mek (authenticated)
- *
- * One-time migration for existing users:
- * 1. Verify master password
- * 2. Generate MEK + Recovery Key
- * 3. Decrypt all vault passwords & secret notes with old method
- * 4. Re-encrypt all data with MEK
- * 5. Wrap MEK with KEK and recovery key
- * 6. Update user record and all data
- * 7. Return recovery key ONCE
- */
+exports.resetPassword = async (req, res) => {
+  try {
+    const { new_password } = req.body
+    const { recovery_mek, recovery_user_id } = req.session
+
+    if (!recovery_mek || !recovery_user_id) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Recovery session expired. Please verify your recovery key again.'
+      })
+    }
+
+    const user = await User.findByPk(recovery_user_id)
+    if (!user) throw new Error('User not found')
+
+    const breachCount = await checkPasswordBreach(new_password)
+    if (breachCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password found in data breaches. Please choose another.'
+      })
+    }
+
+    const mek = Buffer.from(recovery_mek, 'hex')
+    const passwordHash = await bcrypt.hash(new_password, 12)
+    const kekSalt = generateSalt()
+    const kek = await deriveKEK(new_password, kekSalt)
+    const mekByPassword = wrapMEK(mek, kek)
+
+    await user.update({
+      master_hash: passwordHash,
+      kek_salt: kekSalt,
+      encrypted_mek_by_password: mekByPassword.encrypted,
+      mek_pw_iv: mekByPassword.iv,
+      mek_pw_tag: mekByPassword.tag
+    })
+
+    req.session.destroy()
+
+    return res.json({
+      success: true,
+      message: 'Password reset successfully. You can now login.'
+    })
+  } catch (error) {
+    console.error('Reset Password error:', error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Reset failed'
+    })
+  }
+}
+
 exports.migrateToMEK = async (req, res) => {
   const t = await db.sequelize.transaction()
   try {

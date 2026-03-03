@@ -5,7 +5,8 @@ const validateRequest = require('../../middleware/validateRequest')
 const {
   loginSchema,
   registerSchema,
-  recoverPasswordSchema,
+  verifyRecoverySchema,
+  resetPasswordSchema,
   migrateToMekSchema
 } = require('./schema')
 
@@ -17,14 +18,17 @@ router.post(
   Controller.register
 )
 
-// Recovery: user provides recovery_key + new_password (no auth needed)
 router.post(
-  '/recover-password',
-  validateRequest({ body: recoverPasswordSchema }),
-  Controller.recoverPassword
+  '/verify-recovery-key',
+  validateRequest({ body: verifyRecoverySchema }),
+  Controller.verifyRecoveryKey
+)
+router.post(
+  '/reset-password',
+  validateRequest({ body: resetPasswordSchema }),
+  Controller.resetPassword
 )
 
-// Migration: convert existing legacy-encrypted data to MEK system (auth required)
 router.post(
   '/migrate-to-mek',
   authMiddleware,
