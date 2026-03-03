@@ -17,18 +17,6 @@ const {
 const { encrypt, decrypt } = require('../../utils/encryption')
 const { encryptData, decryptData } = require('../../utils/mek')
 
-/**
- * POST /auth/register
- *
- * 1. Validate & check breach
- * 2. Hash password (bcrypt) for authentication
- * 3. Generate MEK (256-bit)
- * 4. Derive KEK from password (Argon2id)
- * 5. Wrap MEK with KEK → encrypted_mek_by_password
- * 6. Generate Recovery Key (256-bit)
- * 7. Wrap MEK with Recovery Key → encrypted_mek_by_recovery
- * 8. Return recovery key to user ONCE
- */
 exports.register = async (req, res) => {
   try {
     const { email, master_password } = req.body
@@ -40,7 +28,6 @@ exports.register = async (req, res) => {
       })
     }
 
-    // Check if user already exists
     const existingUser = await User.findOne({ where: { email } })
     if (existingUser) {
       return res.status(400).json({
@@ -49,7 +36,6 @@ exports.register = async (req, res) => {
       })
     }
 
-    // Check password against known breaches
     const breachCount = await checkPasswordBreach(master_password)
     if (breachCount > 0) {
       return res.status(400).json({
@@ -58,27 +44,20 @@ exports.register = async (req, res) => {
       })
     }
 
-    // Step 1: Hash password for authentication (bcrypt)
     const saltRounds = 12
     const passwordHash = await bcrypt.hash(master_password, saltRounds)
 
-    // Step 2: Generate MEK (256-bit random key)
     const mek = generateMEK()
 
-    // Step 3: Derive KEK from password using Argon2id
     const kekSalt = generateSalt()
     const kek = await deriveKEK(master_password, kekSalt)
 
-    // Step 4: Wrap MEK with KEK (AES-256-GCM)
     const mekByPassword = wrapMEK(mek, kek)
 
-    // Step 5: Generate Recovery Key (256-bit, human-readable)
     const recoveryKey = generateRecoveryKey()
 
-    // Step 6: Wrap MEK with Recovery Key (AES-256-GCM)
     const mekByRecovery = wrapMEK(mek, recoveryKey.raw)
 
-    // Step 7: Store everything in database
     const user = await User.create({
       email,
       master_hash: passwordHash,
@@ -92,7 +71,6 @@ exports.register = async (req, res) => {
       mek_version: 1
     })
 
-    // Step 8: Return recovery key to user — shown ONCE, never stored
     return res.status(201).json({
       success: true,
       message: 'User registered successfully',
@@ -115,14 +93,6 @@ exports.register = async (req, res) => {
   }
 }
 
-/**
- * POST /auth/login
- *
- * 1. Verify bcrypt hash
- * 2. Derive KEK from password
- * 3. Unwrap MEK using KEK
- * 4. Return JWT + MEK (hex) to client
- */
 exports.login = async (req, res) => {
   try {
     const { email, master_password } = req.body
@@ -142,7 +112,6 @@ exports.login = async (req, res) => {
       })
     }
 
-    // Verify password with bcrypt
     const isValid = await bcrypt.compare(master_password, user.master_hash)
     if (!isValid) {
       return res.status(401).json({
@@ -151,11 +120,9 @@ exports.login = async (req, res) => {
       })
     }
 
-    // Generate JWT
     const payload = { userId: user.id, email: user.email }
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' })
 
-    // Set cookie
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -306,7 +273,6 @@ exports.migrateToMEK = async (req, res) => {
     const userId = req.user.userId
     const { master_password } = req.body
 
-    // Find user
     const user = await User.findOne({
       where: { id: userId },
       transaction: t
@@ -320,7 +286,6 @@ exports.migrateToMEK = async (req, res) => {
       })
     }
 
-    // Already migrated
     if (user.mek_version >= 1) {
       await t.rollback()
       return res.status(400).json({
@@ -329,7 +294,6 @@ exports.migrateToMEK = async (req, res) => {
       })
     }
 
-    // Verify master password
     const isValid = await bcrypt.compare(master_password, user.master_hash)
     if (!isValid) {
       await t.rollback()
@@ -339,19 +303,15 @@ exports.migrateToMEK = async (req, res) => {
       })
     }
 
-    // Step 1: Generate MEK
     const mek = generateMEK()
 
-    // Step 2: Derive KEK and wrap MEK
     const kekSalt = generateSalt()
     const kek = await deriveKEK(master_password, kekSalt)
     const mekByPassword = wrapMEK(mek, kek)
 
-    // Step 3: Generate and wrap with recovery key
     const recoveryKey = generateRecoveryKey()
     const mekByRecovery = wrapMEK(mek, recoveryKey.raw)
 
-    // Step 4: Migrate vault passwords
     const vaultPasswords = await db.VaultPassword.findAll({
       where: { user_id: userId },
       transaction: t
@@ -359,7 +319,6 @@ exports.migrateToMEK = async (req, res) => {
 
     for (const vp of vaultPasswords) {
       try {
-        // Decrypt with old method (Argon2id per-item)
         const encryptedObj = JSON.parse(vp.password_encrypted)
         const kdfParams = vp.kdf_params || {
           memoryCost: 2 ** 16,
@@ -372,7 +331,6 @@ exports.migrateToMEK = async (req, res) => {
           kdfParams
         )
 
-        // Re-encrypt with MEK (fast AES-256-GCM)
         const newEncrypted = encryptData(plaintext, mek)
 
         await db.sequelize.query(
@@ -394,11 +352,9 @@ exports.migrateToMEK = async (req, res) => {
           `⚠️ Failed to migrate vault password ${vp.id}:`,
           err.message
         )
-        // Continue with other items — log failures but don't abort entire migration
       }
     }
 
-    // Step 5: Migrate secret notes
     const secretNotes = await db.SecretNote.findAll({
       where: { user_id: userId, deleted_at: null },
       transaction: t
@@ -439,7 +395,6 @@ exports.migrateToMEK = async (req, res) => {
       }
     }
 
-    // Step 6: Update user record
     await user.update(
       {
         kek_salt: kekSalt,
