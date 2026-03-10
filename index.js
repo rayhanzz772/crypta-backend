@@ -51,7 +51,7 @@ app.use(
     }
   })
 )
-
+app.use('/public', express.static('public'))
 app.use('/auth', authRoutes)
 app.use('/api', privateRoute)
 app.use('/client', clientRoutes)

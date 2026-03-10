@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer')
+const path = require('path')
 
 const transporter = nodemailer.createTransport({
   host: process.env.MAIL_HOST,
@@ -19,7 +20,14 @@ async function sendMail({ to, subject, html }) {
     from: process.env.MAIL_FROM || '"Crypta" <noreply@crypta.app>',
     to,
     subject,
-    html
+    html,
+    attachments: [
+      {
+        filename: 'logo.png',
+        path: path.join(__dirname, '../../public/logo.png'),
+        cid: 'logo' // this is referenced in the HTML src="cid:logo"
+      }
+    ]
   })
 
   console.log(`[Mailer] Email sent to ${to} — MessageId: ${info.messageId}`)
