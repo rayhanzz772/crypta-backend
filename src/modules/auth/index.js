@@ -20,6 +20,8 @@ router.post(
   Controller.register
 )
 
+router.get('/me', authMiddleware, Controller.getMe)
+
 router.post(
   '/verify-recovery-key',
   validateRequest({ body: verifyRecoverySchema }),

@@ -8,17 +8,20 @@ const query = {
     WHERE user_id = :userId
     AND status = 'failed'
     AND login_time >= NOW() - INTERVAL '1 DAY'
+    AND login_time >= :recoveredAt
   `,
   deviceChange: `
     SELECT COUNT(DISTINCT device) as count
     FROM login_history
     WHERE user_id = :userId
     AND created_at >= NOW() - INTERVAL '1 hour'
+    AND created_at >= :recoveredAt
   `,
   ipChange: `
     SELECT ip_address
     FROM login_history
     WHERE user_id = :userId
+    AND login_time >= :recoveredAt
     ORDER BY login_time DESC
     LIMIT 2
   `,
@@ -27,18 +30,21 @@ const query = {
     FROM login_history
     WHERE user_id = :userId
     AND created_at >= NOW() - INTERVAL '1 hour'
+    AND created_at >= :recoveredAt
   `,
   accessCount10Min: `
     SELECT COUNT(*) as count
     FROM log_activity
     WHERE user_id = :userId
     AND created_at >= NOW() - INTERVAL '10 MINUTE'
+    AND created_at >= :recoveredAt
   `,
   uniqueEndpoints: `
     SELECT COUNT(DISTINCT endpoint) as count
     FROM log_activity
     WHERE user_id = :userId
     AND created_at >= NOW() - INTERVAL '10 MINUTE'
+    AND created_at >= :recoveredAt
   `
 }
 
@@ -72,50 +78,50 @@ class Controller {
     return Math.max(0, Math.floor(diff / 60000))
   }
 
-  static async getFailedAttempts(userId) {
+  static async getFailedAttempts(userId, recoveredAt) {
     const result = await db.sequelize.query(query.failedAttempts, {
-      replacements: { userId },
+      replacements: { userId, recoveredAt: recoveredAt || new Date(0) },
       type: db.sequelize.QueryTypes.SELECT
     })
     return parseInt(result[0].count || 0, 10)
   }
 
-  static async getDeviceChange(userId) {
+  static async getDeviceChange(userId, recoveredAt) {
     const result = await db.sequelize.query(query.deviceChange, {
-      replacements: { userId },
+      replacements: { userId, recoveredAt: recoveredAt || new Date(0) },
       type: db.sequelize.QueryTypes.SELECT
     })
     return parseInt(result[0].count || 0, 10) > 1 ? 1 : 0
   }
 
-  static async getIpChange(userId) {
+  static async getIpChange(userId, recoveredAt) {
     const result = await db.sequelize.query(query.ipChange, {
-      replacements: { userId },
+      replacements: { userId, recoveredAt: recoveredAt || new Date(0) },
       type: db.sequelize.QueryTypes.SELECT
     })
     if (result.length < 2) return 0
     return result[0].ip_address !== result[1].ip_address ? 1 : 0
   }
 
-  static async getGeoAnomaly(userId) {
+  static async getGeoAnomaly(userId, recoveredAt) {
     const result = await db.sequelize.query(query.geoAnomaly, {
-      replacements: { userId },
+      replacements: { userId, recoveredAt: recoveredAt || new Date(0) },
       type: db.sequelize.QueryTypes.SELECT
     })
     return parseInt(result[0].count || 0, 10) > 1 ? 1 : 0
   }
 
-  static async getAccessCount10Min(userId) {
+  static async getAccessCount10Min(userId, recoveredAt) {
     const result = await db.sequelize.query(query.accessCount10Min, {
-      replacements: { userId },
+      replacements: { userId, recoveredAt: recoveredAt || new Date(0) },
       type: db.sequelize.QueryTypes.SELECT
     })
     return parseInt(result[0].count || 0, 10)
   }
 
-  static async getUniqueEndpoints(userId) {
+  static async getUniqueEndpoints(userId, recoveredAt) {
     const result = await db.sequelize.query(query.uniqueEndpoints, {
-      replacements: { userId },
+      replacements: { userId, recoveredAt: recoveredAt || new Date(0) },
       type: db.sequelize.QueryTypes.SELECT
     })
     return parseInt(result[0].count || 0, 10)

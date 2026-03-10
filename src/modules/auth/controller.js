@@ -14,8 +14,8 @@ const {
   generateRecoveryKey,
   parseRecoveryKey
 } = require('../../utils/recovery-key')
-const { encrypt, decrypt } = require('../../utils/encryption')
-const { encryptData, decryptData } = require('../../utils/mek')
+const { decrypt } = require('../../utils/encryption')
+const { encryptData } = require('../../utils/mek')
 const Detection = require('../../services/detection')
 const {
   buildFeatureVector
@@ -23,6 +23,9 @@ const {
 const { predictAnomaly } = require('../../services/apiPredict')
 const { sendMail } = require('../../utils/mailer')
 const { verificationEmailTemplate } = require('../../utils/emailTemplates')
+const { handleRiskTrigger } = require('../../services/triggerRisk')
+const HttpStatusCode = require('axios').HttpStatusCode
+const { api } = require('../../utils/api')
 
 exports.register = async (req, res) => {
   try {
@@ -122,39 +125,6 @@ exports.register = async (req, res) => {
   }
 }
 
-async function handleRiskTrigger(riskLevel, sessionId, user) {
-  switch (riskLevel?.toLowerCase()) {
-    case 'low':
-      console.log(
-        `[RISK:LOW] User ${user.email} logged in with low anomaly risk. No action taken.`
-      )
-      break
-
-    case 'medium':
-      console.warn(
-        `[RISK:MEDIUM] Suspicious login detected for ${user.email}. Flagging session.`
-      )
-      await db.LoginHistory.update(
-        { is_flagged: true },
-        { where: { id: sessionId } }
-      )
-      break
-
-    case 'high':
-      console.error(
-        `[RISK:HIGH] High-risk login detected for ${user.email}. Flagging and blocking session.`
-      )
-      await db.LoginHistory.update(
-        { is_flagged: true, status: 'blocked' },
-        { where: { id: sessionId } }
-      )
-      break
-
-    default:
-      console.log(`[RISK:UNKNOWN] Unrecognized risk level: ${riskLevel}`)
-  }
-}
-
 exports.login = async (req, res) => {
   try {
     const { email, master_password } = req.body
@@ -182,6 +152,15 @@ exports.login = async (req, res) => {
         success: false,
         message:
           'Email not verified. Please check your inbox for the verification code.'
+      })
+    }
+
+    if (user.is_blocked) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Your account has been blocked due to suspicious activity. ' +
+          'Please reset your password using your recovery key to regain access.'
       })
     }
 
@@ -243,7 +222,7 @@ exports.login = async (req, res) => {
       last_device: req.headers['user-agent']
     })
 
-    buildFeatureVector(user.id, loginTime, req.ip)
+    buildFeatureVector(user.id, loginTime, req.ip, user.recovered_at)
       .then(async (features) => {
         const anomalyLog = await db.AnomalyLog.create({
           id: require('cuid')(),
@@ -253,15 +232,12 @@ exports.login = async (req, res) => {
 
         try {
           const mlResponse = await predictAnomaly(features)
-          console.log('mlResponse', mlResponse)
-
+          console.log(mlResponse)
           await anomalyLog.update({
             anomaly_score: mlResponse.score,
             risk_level: mlResponse.risk_level,
             prediction: mlResponse.status
           })
-
-          console.log('ML Anomaly Result saved to db')
 
           await handleRiskTrigger(mlResponse.risk_level, loginHistory.id, user)
         } catch (mlErr) {
@@ -307,6 +283,38 @@ exports.login = async (req, res) => {
       success: false,
       message: err.message || 'Login failed'
     })
+  }
+}
+
+exports.getMe = async (req, res) => {
+  try {
+    const { email } = req.user
+
+    const user = await db.User.findOne({
+      where: { email },
+      attributes: [
+        'id',
+        'email',
+        'is_verified',
+        'is_blocked',
+        'last_login_at',
+        'last_ip',
+        'last_location',
+        'last_device'
+      ]
+    })
+
+    if (!user) {
+      return res
+        .status(HttpStatusCode.NotFound)
+        .json(api(null, HttpStatusCode.NotFound, { message: 'User not found' }))
+    }
+
+    return res.status(200).json(api(user))
+  } catch (err) {
+    console.error('getMe error:', err)
+    const code = err?.code ?? HttpStatusCode.InternalServerError
+    return res.status(code).json(api(null, code, { err }))
   }
 }
 
@@ -411,7 +419,9 @@ exports.resetPassword = async (req, res) => {
       kek_salt: kekSalt,
       encrypted_mek_by_password: mekByPassword.encrypted,
       mek_pw_iv: mekByPassword.iv,
-      mek_pw_tag: mekByPassword.tag
+      mek_pw_tag: mekByPassword.tag,
+      is_blocked: false,
+      recovered_at: new Date()
     })
 
     req.session.destroy()

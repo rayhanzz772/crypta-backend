@@ -90,6 +90,15 @@ module.exports = (sequelize, DataTypes) => {
       verification_expires_at: {
         type: DataTypes.DATE,
         allowNull: true
+      },
+      is_blocked: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      recovered_at: {
+        type: DataTypes.DATE,
+        allowNull: true
       }
     },
     {

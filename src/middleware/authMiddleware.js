@@ -2,7 +2,7 @@ require('dotenv').config()
 const jwt = require('jsonwebtoken')
 const db = require('../../db/models')
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -15,13 +15,26 @@ const authMiddleware = (req, res, next) => {
   const token = authHeader.split(' ')[1]
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
+
+    const user = await db.User.findByPk(decoded.userId)
+    if (!user || user.is_blocked) {
+      res.clearCookie('token')
+
+      return res.status(403).json({
+        success: false,
+        errorCode: 'ACCOUNT_BLOCKED',
+        message:
+          'Your account is temporarily blocked due to suspicious activity. Please reset your password.'
+      })
+    }
+
     req.user = {
-      userId: decoded.userId,
-      email: decoded.email
+      userId: user.id,
+      email: user.email
     }
 
     db.LogActivity.create({
-      user_id: decoded.userId,
+      user_id: user.id,
       endpoint: req.originalUrl || req.url,
       method: req.method,
       ip_address: req.ip || req.connection.remoteAddress,
