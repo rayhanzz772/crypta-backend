@@ -16,6 +16,13 @@ const {
 } = require('../../utils/recovery-key')
 const { encrypt, decrypt } = require('../../utils/encryption')
 const { encryptData, decryptData } = require('../../utils/mek')
+const Detection = require('../../services/detection')
+const {
+  buildFeatureVector
+} = require('../../services/featureExtractionService')
+const { predictAnomaly } = require('../../services/apiPredict')
+const { sendMail } = require('../../utils/mailer')
+const { verificationEmailTemplate } = require('../../utils/emailTemplates')
 
 exports.register = async (req, res) => {
   try {
@@ -68,12 +75,34 @@ exports.register = async (req, res) => {
       encrypted_mek_by_recovery: mekByRecovery.encrypted,
       mek_rc_iv: mekByRecovery.iv,
       mek_rc_tag: mekByRecovery.tag,
-      mek_version: 1
+      mek_version: 1,
+      is_verified: false
     })
+
+    // Generate 6-digit verification code
+    const verificationCode = Math.floor(
+      100000 + Math.random() * 900000
+    ).toString()
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+
+    await user.update({
+      verification_code: verificationCode,
+      verification_expires_at: expiresAt
+    })
+
+    // Send verification email (non-blocking — don't fail registration if email fails)
+    sendMail({
+      to: email,
+      subject: 'Verify your Crypta account',
+      html: verificationEmailTemplate(verificationCode)
+    }).catch((err) =>
+      console.error('[Mailer] Failed to send verification email:', err.message)
+    )
 
     return res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message:
+        'Registration successful. Please check your email for the verification code.',
       data: {
         id: user.id,
         email: user.email,
@@ -93,9 +122,45 @@ exports.register = async (req, res) => {
   }
 }
 
+async function handleRiskTrigger(riskLevel, sessionId, user) {
+  switch (riskLevel?.toLowerCase()) {
+    case 'low':
+      console.log(
+        `[RISK:LOW] User ${user.email} logged in with low anomaly risk. No action taken.`
+      )
+      break
+
+    case 'medium':
+      console.warn(
+        `[RISK:MEDIUM] Suspicious login detected for ${user.email}. Flagging session.`
+      )
+      await db.LoginHistory.update(
+        { is_flagged: true },
+        { where: { id: sessionId } }
+      )
+      break
+
+    case 'high':
+      console.error(
+        `[RISK:HIGH] High-risk login detected for ${user.email}. Flagging and blocking session.`
+      )
+      await db.LoginHistory.update(
+        { is_flagged: true, status: 'blocked' },
+        { where: { id: sessionId } }
+      )
+      break
+
+    default:
+      console.log(`[RISK:UNKNOWN] Unrecognized risk level: ${riskLevel}`)
+  }
+}
+
 exports.login = async (req, res) => {
   try {
     const { email, master_password } = req.body
+    const ipLocation = await Detection.getClientIP(req)
+    const loginTime = new Date()
+    const getLocation = await Detection.getLocation(ipLocation)
 
     if (!email || !master_password) {
       return res.status(401).json({
@@ -112,15 +177,56 @@ exports.login = async (req, res) => {
       })
     }
 
+    if (!user.is_verified) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Email not verified. Please check your inbox for the verification code.'
+      })
+    }
+
+    let isVpn = false
+    try {
+      if (req.ip && req.ip !== '::1' && req.ip !== '127.0.0.1') {
+        isVpn = (await Detection.checkVPN(req.ip)) === 1
+      }
+    } catch (err) {
+      console.error('VPN check error:', err.message)
+    }
+
     const isValid = await bcrypt.compare(master_password, user.master_hash)
     if (!isValid) {
+      await db.LoginHistory.create({
+        user_id: user.id,
+        login_time: new Date(),
+        ip_address: req.ip,
+        device: req.headers['user-agent'],
+        location: getLocation.city || 'Semarang',
+        vpn_used: isVpn,
+        status: 'failed'
+      })
+
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       })
     }
 
-    const payload = { userId: user.id, email: user.email }
+    const loginHistory = await db.LoginHistory.create({
+      user_id: user.id,
+      login_time: loginTime,
+      ip_address: req.ip,
+      device: req.headers['user-agent'],
+      location: getLocation.city || 'Semarang',
+      vpn_used: isVpn,
+      status: 'success'
+    })
+
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      sessionId: loginHistory.id
+    }
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' })
 
     res.cookie('token', token, {
@@ -129,6 +235,45 @@ exports.login = async (req, res) => {
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000
     })
+
+    await user.update({
+      last_login_at: loginTime,
+      last_ip: req.ip,
+      last_location: getLocation.city || 'Semarang',
+      last_device: req.headers['user-agent']
+    })
+
+    buildFeatureVector(user.id, loginTime, req.ip)
+      .then(async (features) => {
+        const anomalyLog = await db.AnomalyLog.create({
+          id: require('cuid')(),
+          user_id: user.id,
+          ...features
+        })
+
+        try {
+          const mlResponse = await predictAnomaly(features)
+          console.log('mlResponse', mlResponse)
+
+          await anomalyLog.update({
+            anomaly_score: mlResponse.score,
+            risk_level: mlResponse.risk_level,
+            prediction: mlResponse.status
+          })
+
+          console.log('ML Anomaly Result saved to db')
+
+          await handleRiskTrigger(mlResponse.risk_level, loginHistory.id, user)
+        } catch (mlErr) {
+          console.error('ML API Error:', mlErr.message)
+        }
+      })
+      .catch((err) => {
+        console.error(
+          'Failed to extract and save anomaly features:',
+          err.message
+        )
+      })
 
     let mekHex = null
     if (user.mek_version >= 1 && user.encrypted_mek_by_password) {
@@ -167,6 +312,23 @@ exports.login = async (req, res) => {
 
 exports.logout = async (req, res) => {
   try {
+    const tokenStr =
+      req.cookies?.token || req.headers.authorization?.split(' ')[1]
+
+    if (tokenStr) {
+      try {
+        const decoded = jwt.verify(tokenStr, process.env.JWT_SECRET)
+        if (decoded.sessionId) {
+          await db.LoginHistory.update(
+            { last_active_at: new Date() },
+            { where: { id: decoded.sessionId } }
+          )
+        }
+      } catch (jwtErr) {
+        console.warn('Silent fail extracting jwt on logout:', jwtErr.message)
+      }
+    }
+
     res.clearCookie('token')
     return res.json({ success: true, message: 'Logged out successfully' })
   } catch (err) {
@@ -429,6 +591,113 @@ exports.migrateToMEK = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || 'Migration failed'
+    })
+  }
+}
+
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { email, code } = req.body
+
+    const user = await User.findOne({ where: { email } })
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired verification code'
+      })
+    }
+
+    if (user.is_verified) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email is already verified'
+      })
+    }
+
+    const now = new Date()
+    const isExpired =
+      !user.verification_expires_at ||
+      now > new Date(user.verification_expires_at)
+    const isInvalid = user.verification_code !== code
+
+    if (isExpired || isInvalid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired verification code'
+      })
+    }
+
+    await user.update({
+      is_verified: true,
+      verification_code: null,
+      verification_expires_at: null
+    })
+
+    return res.json({
+      success: true,
+      message: 'Email verified successfully. You can now log in.'
+    })
+  } catch (error) {
+    console.error('Verify email error:', error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal Server Error'
+    })
+  }
+}
+
+exports.resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body
+
+    const user = await User.findOne({ where: { email } })
+    if (!user) {
+      // Return success to avoid email enumeration
+      return res.json({
+        success: true,
+        message:
+          'If this email is registered and unverified, a new code has been sent.'
+      })
+    }
+
+    if (user.is_verified) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email is already verified'
+      })
+    }
+
+    const verificationCode = Math.floor(
+      100000 + Math.random() * 900000
+    ).toString()
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+
+    await user.update({
+      verification_code: verificationCode,
+      verification_expires_at: expiresAt
+    })
+
+    sendMail({
+      to: email,
+      subject: 'Your new Crypta verification code',
+      html: verificationEmailTemplate(verificationCode)
+    }).catch((err) =>
+      console.error(
+        '[Mailer] Failed to resend verification email:',
+        err.message
+      )
+    )
+
+    return res.json({
+      success: true,
+      message:
+        'If this email is registered and unverified, a new code has been sent.'
+    })
+  } catch (error) {
+    console.error('Resend verification error:', error)
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Internal Server Error'
     })
   }
 }
