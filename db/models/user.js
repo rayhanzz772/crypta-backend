@@ -19,6 +19,21 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'owner_id',
         as: 'ownedProjects'
       })
+
+      User.hasMany(models.LoginHistory, {
+        foreignKey: 'user_id',
+        as: 'loginHistories'
+      })
+
+      User.hasMany(models.LogActivity, {
+        foreignKey: 'user_id',
+        as: 'logActivities'
+      })
+
+      User.hasMany(models.AnomalyLog, {
+        foreignKey: 'user_id',
+        as: 'anomalyLogs'
+      })
     }
   }
 
@@ -45,7 +60,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0
       },
-
+      last_login_at: { type: DataTypes.DATE, allowNull: true },
+      last_ip: { type: DataTypes.STRING, allowNull: true },
+      last_location: { type: DataTypes.STRING, allowNull: true },
+      last_device: { type: DataTypes.STRING, allowNull: true },
       created_at: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -57,6 +75,19 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: DataTypes.NOW
       },
       deleted_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      is_verified: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      verification_code: {
+        type: DataTypes.STRING(6),
+        allowNull: true
+      },
+      verification_expires_at: {
         type: DataTypes.DATE,
         allowNull: true
       }

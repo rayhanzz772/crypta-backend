@@ -20,6 +20,23 @@ const authMiddleware = (req, res, next) => {
       email: decoded.email
     }
 
+    db.LogActivity.create({
+      user_id: decoded.userId,
+      endpoint: req.originalUrl || req.url,
+      method: req.method,
+      ip_address: req.ip || req.connection.remoteAddress,
+      device: req.headers['user-agent']
+    }).catch((err) => console.error('Error logging activity:', err.message))
+
+    if (decoded.sessionId) {
+      db.LoginHistory.update(
+        { last_active_at: new Date() },
+        { where: { id: decoded.sessionId } }
+      ).catch((err) =>
+        console.error('Error tracking session heartbeat:', err.message)
+      )
+    }
+
     next()
   } catch (err) {
     console.error('JWT verification error:', err.message)
@@ -44,6 +61,18 @@ const apiKeyAuth = async (req, res, next) => {
     return res.status(403).json({ message: 'Invalid or revoked API key' })
 
   req.user = { userId: record.user_id }
+
+  // Log the API key authenticated request asynchronously
+  db.LogActivity.create({
+    user_id: record.user_id,
+    endpoint: req.originalUrl || req.url,
+    method: req.method,
+    ip_address: req.ip || req.connection.remoteAddress,
+    device: req.headers['user-agent']
+  }).catch((err) =>
+    console.error('Error logging API key activity:', err.message)
+  )
+
   next()
 }
 

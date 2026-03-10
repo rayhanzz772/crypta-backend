@@ -42,10 +42,28 @@ const migrateToMekSchema = z.object({
     .min(1, 'Master password cannot be empty')
 })
 
+const verifyEmailSchema = z.object({
+  email: z
+    .string({ required_error: 'Email is required' })
+    .email('Invalid email format'),
+  code: z
+    .string({ required_error: 'Verification code is required' })
+    .length(6, 'Verification code must be exactly 6 digits')
+    .regex(/^\d{6}$/, 'Verification code must be numeric')
+})
+
+const resendVerificationSchema = z.object({
+  email: z
+    .string({ required_error: 'Email is required' })
+    .email('Invalid email format')
+})
+
 module.exports = {
   loginSchema,
   registerSchema,
   verifyRecoverySchema,
   resetPasswordSchema,
-  migrateToMekSchema
+  migrateToMekSchema,
+  verifyEmailSchema,
+  resendVerificationSchema
 }

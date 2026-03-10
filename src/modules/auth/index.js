@@ -7,7 +7,9 @@ const {
   registerSchema,
   verifyRecoverySchema,
   resetPasswordSchema,
-  migrateToMekSchema
+  migrateToMekSchema,
+  verifyEmailSchema,
+  resendVerificationSchema
 } = require('./schema')
 
 router.post('/login', validateRequest({ body: loginSchema }), Controller.login)
@@ -34,6 +36,18 @@ router.post(
   authMiddleware,
   validateRequest({ body: migrateToMekSchema }),
   Controller.migrateToMEK
+)
+
+router.post(
+  '/verify-email',
+  validateRequest({ body: verifyEmailSchema }),
+  Controller.verifyEmail
+)
+
+router.post(
+  '/resend-verification',
+  validateRequest({ body: resendVerificationSchema }),
+  Controller.resendVerification
 )
 
 module.exports = router
