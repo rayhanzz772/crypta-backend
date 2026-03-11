@@ -4,10 +4,6 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY
 })
 
-/**
- * Generate AI Insight based on Login Anomaly Data (RAG Approach)
- * @param {Object} contextData - Context data for the LLM
- */
 async function analyzeRisk(contextData) {
   const {
     userEmail,

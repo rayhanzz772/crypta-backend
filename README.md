@@ -1,6 +1,6 @@
-# 🔐 Vault Password Backend
+# 🔐 Vault Password Backend with ML Risk Analysis
 
-A secure password management backend API built with Node.js, Express, and Sequelize. This application provides robust encryption, user authentication, and password vault management capabilities.
+A secure password management backend API built with Node.js, Express, and Sequelize. This application implements **Argon2id** and **AES-256-GCM** for robust encryption, alongside an **AI-driven ML Risk Analysis Pipeline** using **Retrieval-Augmented Generation (RAG)** to detect and mitigate unauthorized access attempts.
 
 ## ✨ Features
 
@@ -9,6 +9,9 @@ A secure password management backend API built with Node.js, Express, and Sequel
 - 📁 **Category Management**: Organize passwords into categories
 - 🔍 **Advanced Search & Filter**: Search and filter vault entries
 - 📊 **Audit Logs**: Track all vault operations (create, decrypt, delete)
+- 🧠 **Machine Learning Anomaly Detection**: Analyzes login behavior (IP, Location, Device, Time) to generate risk scores
+- 🤖 **AI Risk Insights (RAG LLM)**: Automatically generates human-readable security analysis and actionable mitigations via Groq LLM when suspicious activity is detected
+- 📧 **Automated Security Alerts**: Triggers real-time email warnings with AI insights for medium/high-risk logins
 - 🛡️ **Security Best Practices**:
   - Argon2id for password hashing
   - Master password encryption
@@ -29,6 +32,9 @@ A secure password management backend API built with Node.js, Express, and Sequel
   - AES-256-GCM for password encryption
 - **Validation**: Zod
 - **Security**: bcrypt, express-rate-limit
+- **AI / LLM API**: Groq SDK (Mixtral/Llama models)
+- **Machine Learning API**: Python (Flask / scikit-learn / LightGBM)
+- **Email Service**: Mailtrap
 - **Utilities**: CUID for unique IDs
 
 ## 📋 Prerequisites
@@ -411,6 +417,26 @@ vault-password-backend/
 ├── .gitignore
 └── README.md
 ```
+
+## 🧠 Machine Learning & AI Risk Analysis (RAG)
+
+This project implements a state-of-the-art hybrid AI security pipeline, acting as the core of the thesis: **"IMPLEMENTASI ARGON2ID DAN AES-256-GCM PADA SISTEM MANAJEMEN PASSWORD BERBASIS RESTFUL API DENGAN ANALISIS RISIKO AKSES BERBASIS MACHINE LEARNING"**.
+
+### 1. Anomaly Detection (Machine Learning)
+
+When a user logs in, the system extracts features (IP Address, Geolocation, Device/User-Agent, Login Time, VPN status) and sends them to a Python-based ML Microservice. The ML model calculates an **Anomaly Score** and assigns a **Risk Level** (Low, Medium, High).
+
+### 2. Retrieval-Augmented Generation (RAG)
+
+For Medium and High-risk logins, the system performs a RAG workflow:
+
+- **Retrieval**: Fetches the user's _Current Login Context_ (IP, Location, Time) and _Previous Login Context_ (`last_ip`, `last_location`) from the database.
+- **Augmentation**: Constructs a precise prompt injecting these real-world data points alongside the ML anomaly score.
+- **Generation**: Sends the prompt to a **Large Language Model (via Groq API)**. The LLM acts as an expert cybersecurity analyst to generate a concise, highly accurate risk explanation (e.g., detecting impossible travel) and actionable mitigation steps in HTML format.
+
+### 3. Automated Mitigation
+
+The generated AI insight is instantly injected into an email template and sent to the user via **Mailtrap**, while high-risk accounts are automatically blocked to prevent unauthorized vault decryption.
 
 ## 🔐 Security Features
 
