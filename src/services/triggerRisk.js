@@ -7,16 +7,10 @@ const db = require('../../db/models')
 
 async function handleRiskTrigger(riskLevel, sessionId, user) {
   switch (riskLevel?.toLowerCase()) {
-    case 'high':
-      console.log(
-        `[RISK:LOW] User ${user.email} logged in with low anomaly risk. No action taken.`
-      )
+    case 'low':
       break
 
     case 'medium':
-      console.warn(
-        `[RISK:MEDIUM] Suspicious login detected for ${user.email}. Flagging session.`
-      )
       await db.LoginHistory.update(
         { is_flagged: true },
         { where: { id: sessionId }, returning: true, plain: true }
@@ -42,10 +36,7 @@ async function handleRiskTrigger(riskLevel, sessionId, user) {
 
       break
 
-    case 'low':
-      console.error(
-        `[RISK:HIGH] High-risk login detected for ${user.email}. Blocking account.`
-      )
+    case 'high':
       await db.LoginHistory.update(
         { is_flagged: true, status: 'blocked' },
         { where: { id: sessionId } }
@@ -61,7 +52,7 @@ async function handleRiskTrigger(riskLevel, sessionId, user) {
       break
 
     default:
-      console.log(`[RISK:UNKNOWN] Unrecognized risk level: ${riskLevel}`)
+      break
   }
 }
 
