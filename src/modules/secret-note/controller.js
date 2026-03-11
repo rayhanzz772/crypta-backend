@@ -6,6 +6,7 @@ const HTTP_OK = HttpStatusCode?.Ok || 200
 const INTERNAL_SERVER_ERROR = HttpStatusCode?.InternalServerError || 500
 const NOT_FOUND = HttpStatusCode?.NotFound || 404
 const BAD_REQUEST = HttpStatusCode?.BadRequest || 400
+const VaultLog = db.VaultLog
 
 // Legacy encryption (Argon2id per-item)
 const { encrypt, decrypt } = require('../../utils/encryption')
@@ -110,6 +111,17 @@ class Controller {
 
       if (!item) {
         throw new Error('Failed to create secret note')
+      }
+
+      if (item && item.id) {
+        await VaultLog.create(
+          {
+            user_id: userId,
+            note_id: item.id,
+            action: 'Create new note'
+          },
+          { transaction: t }
+        )
       }
 
       await t.commit()
@@ -299,6 +311,7 @@ class Controller {
   }
 
   static async deleteSecretNote(req, res) {
+    const t = await db.sequelize.transaction()
     try {
       const { id } = req.params
       const userId = req.user.userId
@@ -311,7 +324,8 @@ class Controller {
         `,
         {
           replacements: { id, userId },
-          type: db.Sequelize.QueryTypes.UPDATE
+          type: db.Sequelize.QueryTypes.UPDATE,
+          transaction: t
         }
       )
 
@@ -322,7 +336,8 @@ class Controller {
         `,
         {
           replacements: { id, userId },
-          type: db.Sequelize.QueryTypes.DELETE
+          type: db.Sequelize.QueryTypes.DELETE,
+          transaction: t
         }
       )
 
@@ -333,10 +348,25 @@ class Controller {
         })
       }
 
+      const item = await SecretNote.findOne({
+        where: { id, user_id: userId, deleted_at: null }
+      })
+
+      if (item && item.id) {
+        await VaultLog.create({
+          user_id: userId,
+          note_id: item.id,
+          action: 'Deleted note'
+        })
+      }
+
+      await t.commit()
+
       return res
         .status(HTTP_OK)
         .json({ success: true, message: 'Secret note deleted successfully' })
     } catch (err) {
+      await t.rollback()
       console.error('Delete secret note error:', err)
       res
         .status(INTERNAL_SERVER_ERROR)
@@ -448,6 +478,14 @@ class Controller {
           tagRecords.push(tag)
         }
         await item.setTags(tagRecords, { transaction: t })
+      }
+
+      if (item && item.id) {
+        await VaultLog.create({
+          user_id: userId,
+          note_id: item.id,
+          action: 'Updated note'
+        })
       }
 
       await t.commit()

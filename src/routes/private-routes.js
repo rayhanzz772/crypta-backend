@@ -14,5 +14,6 @@ router.use('/vault', authMiddleware, require('../modules/vault-password/index'))
 router.use('/notes', authMiddleware, require('../modules/secret-note/index'))
 router.use('/tags', authMiddleware, require('../modules/tag/index'))
 router.use('/developer', authMiddleware, require('../modules/developer/index'))
+router.use('/activity', authMiddleware, require('../modules/log/index'))
 
 module.exports = router

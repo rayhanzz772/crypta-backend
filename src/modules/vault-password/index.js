@@ -9,8 +9,7 @@ const {
   decryptVaultPasswordSchema,
   idParamSchema,
   getVaultPasswordsQuerySchema,
-  toggleFavoriteSchema,
-  logActionSchema
+  toggleFavoriteSchema
 } = require('./schema')
 
 const decryptLimiter = rateLimit({
@@ -46,13 +45,6 @@ router.put(
   validateRequest({ params: idParamSchema, body: updateVaultPasswordSchema }),
   Controller.updateVaultPassword
 )
-router.get('/logs', Controller.getVaultLogs)
-router.post(
-  '/logs',
-  validateRequest({ body: logActionSchema }),
-  Controller.logAction
-)
-router.get('/recent-activity', Controller.logRecentActivity)
 
 router.post(
   '/favorite',
