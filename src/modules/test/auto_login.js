@@ -2,11 +2,11 @@ const axios = require('axios')
 
 async function autoLogin() {
   const loginUrl = 'http://localhost:5000/auth/login'
-  const email = 'testing@gmail.com'
+  const email = 'jxx871kr59@gmail.com'
   const password = 'Jxx871kr59'
 
   // Number of times to attempt login
-  const attempts = 15 // 25 for HIGH, 15 for MEDIUM, <10 for LOW
+  const attempts = 7 // 25 for HIGH, 15 for MEDIUM, <10 for LOW
 
   console.log(`Starting ${attempts} login attempts for ${email}...`)
 

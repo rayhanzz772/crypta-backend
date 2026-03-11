@@ -1,8 +1,3 @@
-/**
- * HTML email template for 6-digit verification code
- * @param {string} code - The 6-digit verification code
- * @returns {string} HTML string
- */
 function verificationEmailTemplate(code) {
   return `
 <!DOCTYPE html>
@@ -50,11 +45,6 @@ function verificationEmailTemplate(code) {
   `.trim()
 }
 
-/**
- * HTML email template for account blocked due to high-risk activity
- * @param {string} email - The user's email address
- * @returns {string} HTML string
- */
 function accountBlockedEmailTemplate(email) {
   return `
 <!DOCTYPE html>
@@ -70,8 +60,8 @@ function accountBlockedEmailTemplate(email) {
     .header img.logo { max-width: 140px; height: auto; }
     .body { padding: 36px 40px; }
     .body p { color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px; }
-    .alert-box { background: #eff6ff; border: 2px solid #3095e7; border-radius: 10px; padding: 20px 24px; margin: 24px 0; }
-    .alert-box p { margin: 0; color: #1d4ed8; font-size: 15px; font-weight: 600; }
+    .alert-box { background: #fffbeb; border: 2px solid #f59e0b; border-radius: 10px; padding: 20px 24px; margin: 24px 0; }
+    .alert-box p { margin: 0; color: #b45309; font-size: 15px; font-weight: 600; }
     .steps { background: #f8fafc; border-radius: 8px; padding: 20px 24px; margin: 20px 0; }
     .steps p { margin: 0 0 8px; color: #1e293b; font-size: 14px; font-weight: 600; }
     .steps ol { margin: 8px 0 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.8; }
@@ -89,7 +79,7 @@ function accountBlockedEmailTemplate(email) {
       <p>Hello,</p>
       <p>We detected <strong>suspicious login activity</strong> on your Crypta account (<strong>${email}</strong>). As a precaution, your account has been <strong>temporarily blocked</strong>.</p>
       <div class="alert-box">
-        <p>🛡️ Your account has been secured and temporarily blocked.</p>
+        <p>🛡️ Your account has been temporarily blocked.</p>
       </div>
       <div class="steps">
         <p>To regain access, follow these steps:</p>
@@ -101,7 +91,7 @@ function accountBlockedEmailTemplate(email) {
         </ol>
       </div>
       <div class="note">
-        ⚠️ If you did not attempt to log in, your credentials may be compromised. Reset your password immediately.
+        If you did not attempt to log in, your credentials may be compromised. Reset your password immediately.
       </div>
     </div>
     <div class="footer">
@@ -114,12 +104,6 @@ function accountBlockedEmailTemplate(email) {
   `.trim()
 }
 
-/**
- * HTML email template for new login alert (Medium Risk)
- * @param {string} email - The user's email address
- * @param {object} details - Login details (ip, device, location, time)
- * @returns {string} HTML string
- */
 function newLoginAlertEmailTemplate(email, details) {
   return `
 <!DOCTYPE html>
@@ -141,6 +125,8 @@ function newLoginAlertEmailTemplate(email, details) {
     .note { background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; padding: 12px 16px; color: #92400e; font-size: 13px; margin: 20px 0 0; }
     .footer { background: #f9fafb; padding: 20px 40px; text-align: center; border-top: 1px solid #e5e7eb; }
     .footer p { margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.6; }
+    .ai-insight ul { margin-top: 8px; margin-bottom: 8px; padding-left: 20px; }
+    .ai-insight li { margin-bottom: 4px; }
   </style>
 </head>
 <body>
@@ -157,9 +143,19 @@ function newLoginAlertEmailTemplate(email, details) {
         <p>IP Address: <span>${details.ip || 'Unknown'}</span></p>
         <p>Time: <span>${new Date(details.time).toUTCString()}</span></p>
       </div>
+      ${
+        details.aiInsight
+          ? `
+      <div class="alert-box" style="background: #EFF6FF; border: 1px solid #3B82F6; margin-bottom: 24px; border-radius: 12px; padding: 20px;">
+        <p style="color: #1E3A8A; margin-bottom: 12px; font-weight: bold; margin-top: 0;">AI Risk Analysis</p>
+        <div class="ai-insight" style="color: #1E3A8A; font-size: 14px; line-height: 1.6;">${details.aiInsight}</div>
+      </div>
+      `
+          : ''
+      }
       <p>If this was you, you can safely ignore this email.</p>
       <div class="note">
-        ⚠️ If you did not log in recently, your credentials might be compromised. Please reset your master password immediately.
+        If you did not log in recently, your credentials might be compromised. Please reset your master password immediately.
       </div>
     </div>
     <div class="footer">
