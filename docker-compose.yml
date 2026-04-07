@@ -13,6 +13,8 @@ services:
     depends_on:
       - db
     restart: always
+    networks:
+      - crypta_network   # ✅ tambahkan ini
 
   db:
     image: postgres:15
@@ -26,6 +28,12 @@ services:
     ports:
       - "5432:5432"
     restart: always
+    networks:
+      - crypta_network   # ✅ tambahkan ini
 
 volumes:
   pgdata:
+
+networks:
+  crypta_network:        # ✅ deklarasi network-nya
+    driver: bridge
