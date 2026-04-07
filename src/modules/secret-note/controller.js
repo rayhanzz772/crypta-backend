@@ -339,7 +339,6 @@ class Controller {
           }
         )
 
-        console.log('✅ Note encrypted and updated successfully (raw query)')
       }
 
       // Update other fields using Sequelize ORM

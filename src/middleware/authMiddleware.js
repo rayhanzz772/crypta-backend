@@ -15,9 +15,7 @@ const authMiddleware = (req, res, next) => {
   const token = authHeader.split(' ')[1]
   try {
     // Verifikasi token
-    console.log('Token received:', token)
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
-    console.log('Decoded:', decoded)
 
     // Simpan data user ke req.user
     req.user = {

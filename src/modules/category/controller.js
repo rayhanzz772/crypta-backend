@@ -9,7 +9,6 @@ class Controller {
     try {
       const { name } = req.body;
       const userId = req.user.userId;
-      console.log("Creating category for user:", userId);
 
       const item = await db.Category.create({
         name: name,

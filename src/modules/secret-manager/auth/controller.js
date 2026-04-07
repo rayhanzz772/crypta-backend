@@ -30,8 +30,6 @@ async function issueToken(req, res) {
     return res.status(401).json({ message: 'invalid audience' })
   }
 
-  console.log(aud)
-
   const sa = await ServiceAccount.findOne({
     where: {
       client_id,

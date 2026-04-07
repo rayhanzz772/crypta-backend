@@ -123,8 +123,7 @@ class Controller {
         `,
         {
           replacements,
-          type: db.sequelize.QueryTypes.SELECT,
-          logging: console.log
+          type: db.sequelize.QueryTypes.SELECT
         }
       )
 
@@ -275,10 +274,6 @@ class Controller {
             type: db.sequelize.QueryTypes.UPDATE,
             transaction: t
           }
-        )
-
-        console.log(
-          '✅ Password encrypted and updated successfully (raw query)'
         )
       }
 
