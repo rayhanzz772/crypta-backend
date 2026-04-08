@@ -176,8 +176,7 @@ class Controller {
         `,
         {
           replacements,
-          type: db.sequelize.QueryTypes.SELECT,
-          logging: console.log
+          type: db.sequelize.QueryTypes.SELECT
         }
       )
 

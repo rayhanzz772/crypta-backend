@@ -14,6 +14,7 @@ const authMiddleware = async (req, res, next) => {
 
   const token = authHeader.split(' ')[1]
   try {
+    // Verifikasi token
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
 
     const user = await db.User.findByPk(decoded.userId)

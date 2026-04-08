@@ -459,6 +459,7 @@ class Controller {
             transaction: t
           }
         )
+
       }
 
       // Update other fields
