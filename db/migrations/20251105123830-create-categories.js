@@ -23,7 +23,13 @@ module.exports = {
         type: Sequelize.DATE,
         defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       }
-    });
+    })
+
+    await queryInterface.addConstraint('categories', {
+      fields: ['name'],
+      type: 'unique',
+      name: 'unique_category_name'
+    })
   },
 
   async down (queryInterface, Sequelize) {

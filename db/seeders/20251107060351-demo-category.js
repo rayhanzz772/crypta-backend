@@ -5,32 +5,19 @@ const cuid = require('cuid');
 module.exports = {
   async up (queryInterface, Sequelize) {
     
-    await queryInterface.bulkInsert('categories', [
-      {
-        id: cuid(),
-        name: 'Work',
-        created_at: new Date(),
-        updated_at: new Date(),
-      },
-            {
-        id: cuid(),
-        name: 'Finance',
-        created_at: new Date(),
-        updated_at: new Date(),
-      },
-            {
-        id: cuid(),
-        name: 'Game',
-        created_at: new Date(),
-        updated_at: new Date(),
-      },
-            {
-        id: cuid(),
-        name: 'Social',
-        created_at: new Date(),
-        updated_at: new Date(),
-      }
-    ]);
+    await queryInterface.sequelize.query(`
+  INSERT INTO categories (id, name, created_at, updated_at)
+  VALUES 
+    ('${cuid()}', 'Work', NOW(), NOW()),
+    ('${cuid()}', 'Finance', NOW(), NOW()),
+    ('${cuid()}', 'Game', NOW(), NOW()),
+    ('${cuid()}', 'Social', NOW(), NOW()),
+    ('${cuid()}', 'Personal', NOW(), NOW()),
+    ('${cuid()}', 'Medical', NOW(), NOW()),
+    ('${cuid()}', 'Ideas', NOW(), NOW()),
+    ('${cuid()}', 'Other', NOW(), NOW())
+  ON CONFLICT (name) DO NOTHING;
+`);
   },
 
   async down (queryInterface, Sequelize) {
