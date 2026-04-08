@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["npm", "run", "start"]
+CMD ["sh", "-c", "npx sequelize db:migrate && npm run start"]
