@@ -1,13 +1,13 @@
 const rateLimit = require('express-rate-limit')
 
 const privateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
-    message: 'Too many requests (private route). Please slow down.'
+    message: 'Too many requests. Please slow down.'
   },
   keyGenerator: (req) => {
     if (req.user?.userId) return req.user.userId

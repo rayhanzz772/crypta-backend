@@ -19,6 +19,31 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'owner_id',
         as: 'ownedProjects'
       })
+
+      User.hasMany(models.LoginHistory, {
+        foreignKey: 'user_id',
+        as: 'loginHistories'
+      })
+
+      User.hasMany(models.LogActivity, {
+        foreignKey: 'user_id',
+        as: 'logActivities'
+      })
+
+      User.hasMany(models.File, {
+        foreignKey: 'user_id',
+        as: 'files'
+      })
+
+      User.hasMany(models.FileFolder, {
+        foreignKey: 'user_id',
+        as: 'fileFolders'
+      })
+
+      User.hasMany(models.AnomalyLog, {
+        foreignKey: 'user_id',
+        as: 'anomalyLogs'
+      })
     }
   }
 
@@ -31,6 +56,24 @@ module.exports = (sequelize, DataTypes) => {
       },
       email: { type: DataTypes.STRING(100), allowNull: false, unique: true },
       master_hash: { type: DataTypes.STRING, allowNull: false },
+
+      // --- MEK / Recovery Key columns ---
+      kek_salt: { type: DataTypes.STRING(64), allowNull: true },
+      encrypted_mek_by_password: { type: DataTypes.BLOB, allowNull: true },
+      mek_pw_iv: { type: DataTypes.BLOB, allowNull: true },
+      mek_pw_tag: { type: DataTypes.BLOB, allowNull: true },
+      encrypted_mek_by_recovery: { type: DataTypes.BLOB, allowNull: true },
+      mek_rc_iv: { type: DataTypes.BLOB, allowNull: true },
+      mek_rc_tag: { type: DataTypes.BLOB, allowNull: true },
+      mek_version: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+      },
+      last_login_at: { type: DataTypes.DATE, allowNull: true },
+      last_ip: { type: DataTypes.STRING, allowNull: true },
+      last_location: { type: DataTypes.STRING, allowNull: true },
+      last_device: { type: DataTypes.STRING, allowNull: true },
       created_at: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -42,6 +85,28 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: DataTypes.NOW
       },
       deleted_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      is_verified: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      verification_code: {
+        type: DataTypes.STRING(6),
+        allowNull: true
+      },
+      verification_expires_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      is_blocked: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      recovered_at: {
         type: DataTypes.DATE,
         allowNull: true
       }

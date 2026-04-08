@@ -7,42 +7,95 @@ const HTTP_OK = HttpStatusCode?.Ok || 200
 const INTERNAL_SERVER_ERROR = HttpStatusCode?.InternalServerError || 500
 const NOT_FOUND = HttpStatusCode?.NotFound || 404
 const BAD_REQUEST = HttpStatusCode?.BadRequest || 400
+
+// Legacy encryption (Argon2id per-item)
 const { encrypt, decrypt } = require('../../utils/encryption')
+// MEK-based encryption (direct AES-256-GCM)
+const { encryptData, decryptData } = require('../../utils/mek')
+
+/**
+ * Helper: Get user's mek_version to decide encryption path
+ */
+async function getUserMekVersion(userId) {
+  const user = await db.User.findByPk(userId, {
+    attributes: ['mek_version']
+  })
+  return user ? user.mek_version : 0
+}
+
+/**
+ * Helper: Parse MEK from request body (hex string → Buffer)
+ */
+function parseMEK(mekHex) {
+  if (!mekHex || typeof mekHex !== 'string') return null
+  const buf = Buffer.from(mekHex, 'hex')
+  if (buf.length !== 32) return null
+  return buf
+}
 
 class Controller {
   static async createVaultPassword(req, res) {
     const t = await db.sequelize.transaction()
     try {
-      const { name, username, password, note, master_password, category_id } =
-        req.body
+      const {
+        name,
+        username,
+        password,
+        note,
+        master_password,
+        mek: mekHex,
+        category_id
+      } = req.body
       const userId = req.user.userId
 
-      if (!master_password) {
-        return res.status(400).json({
-          success: false,
-          message: 'Master password required for encryption'
-        })
-      }
+      const mekVersion = await getUserMekVersion(userId)
+      let encryptedPassword
 
-      const kdfType = 'argon2id'
-      const kdfParams = {
-        memoryCost: 2 ** 16,
-        timeCost: 3,
-        parallelism: 1
+      if (mekVersion >= 1) {
+        // --- MEK path: fast AES-256-GCM ---
+        const mek = parseMEK(mekHex)
+        if (!mek) {
+          return res.status(400).json({
+            success: false,
+            message: 'MEK is required for encryption (obtain from login)'
+          })
+        }
+        const encrypted = encryptData(password, mek)
+        encryptedPassword = JSON.stringify(encrypted)
+      } else {
+        // --- Legacy path: Argon2id per-item ---
+        if (!master_password) {
+          return res.status(400).json({
+            success: false,
+            message: 'Master password required for encryption'
+          })
+        }
+        const kdfParams = {
+          memoryCost: 2 ** 16,
+          timeCost: 3,
+          parallelism: 1
+        }
+        const encrypted = await encrypt(password, master_password, kdfParams)
+        encryptedPassword = JSON.stringify(encrypted)
       }
-
-      const encrypted = await encrypt(password, master_password, kdfParams)
 
       const item = await VaultPassword.create(
         {
           user_id: userId,
           name,
           username,
-          password_encrypted: JSON.stringify(encrypted),
+          password_encrypted: encryptedPassword,
           category_id: category_id || null,
           note,
-          kdf_type: kdfType,
-          kdf_params: kdfParams
+          kdf_type: mekVersion >= 1 ? 'mek' : 'argon2id',
+          kdf_params:
+            mekVersion >= 1
+              ? null
+              : {
+                  memoryCost: 2 ** 16,
+                  timeCost: 3,
+                  parallelism: 1
+                }
         },
         { transaction: t }
       )
@@ -155,7 +208,7 @@ class Controller {
   static async decryptVaultPassword(req, res) {
     try {
       const { id } = req.params
-      const { master_password } = req.body
+      const { master_password, mek: mekHex } = req.body
       const userId = req.user.userId
 
       const item = await db.sequelize
@@ -182,15 +235,6 @@ class Controller {
           .json({ success: false, message: 'Vault item not found' })
       }
 
-      const { kdf_type, kdf_params } = item
-
-      if (kdf_type !== 'argon2id') {
-        return res.status(400).json({
-          success: false,
-          message: `Unsupported KDF type: ${kdf_type}`
-        })
-      }
-
       let encryptedObj
       try {
         encryptedObj = JSON.parse(item.password_encrypted)
@@ -198,7 +242,36 @@ class Controller {
         throw new Error('Invalid encrypted data format')
       }
 
-      const decrypted = await decrypt(encryptedObj, master_password, kdf_params)
+      let decrypted
+
+      // Determine decryption method
+      if (item.kdf_type === 'mek' || encryptedObj.ciphertext) {
+        // --- MEK path ---
+        const mek = parseMEK(mekHex)
+        if (!mek) {
+          return res.status(400).json({
+            success: false,
+            message: 'MEK is required for decryption (obtain from login)'
+          })
+        }
+        decrypted = decryptData(encryptedObj, mek)
+      } else {
+        // --- Legacy path ---
+        if (!master_password) {
+          return res.status(400).json({
+            success: false,
+            message: 'Master password is required for decryption'
+          })
+        }
+        const { kdf_type, kdf_params } = item
+        if (kdf_type !== 'argon2id') {
+          return res.status(400).json({
+            success: false,
+            message: `Unsupported KDF type: ${kdf_type}`
+          })
+        }
+        decrypted = await decrypt(encryptedObj, master_password, kdf_params)
+      }
 
       await VaultLog.create({
         user_id: userId,
@@ -228,8 +301,15 @@ class Controller {
     const t = await db.sequelize.transaction()
     try {
       const { id } = req.params
-      const { name, username, password, note, master_password, category } =
-        req.body
+      const {
+        name,
+        username,
+        password,
+        note,
+        master_password,
+        mek: mekHex,
+        category
+      } = req.body
       const userId = req.user.userId
 
       const item = await VaultPassword.findOne({
@@ -241,33 +321,52 @@ class Controller {
         throw new Error('Vault item not found')
       }
 
-      if (password && !master_password) {
-        await t.rollback()
-        throw new Error('Master password required for encryption')
-      }
-
-      let encryptedPassword
       if (password) {
-        const kdfParams = item.kdf_params || {
-          memoryCost: 2 ** 16,
-          timeCost: 3,
-          parallelism: 1
-        }
-        const encryptionResult = await encrypt(
-          password,
-          master_password,
-          kdfParams
-        )
-        encryptedPassword = JSON.stringify(encryptionResult)
+        const mekVersion = await getUserMekVersion(userId)
+        let encryptedPassword
 
-        // ✅ FIX: Use raw query to avoid PostgreSQL type conversion issues
+        if (mekVersion >= 1) {
+          // --- MEK path ---
+          const mek = parseMEK(mekHex)
+          if (!mek) {
+            await t.rollback()
+            return res.status(400).json({
+              success: false,
+              message: 'MEK is required for encryption'
+            })
+          }
+          const encrypted = encryptData(password, mek)
+          encryptedPassword = JSON.stringify(encrypted)
+        } else {
+          // --- Legacy path ---
+          if (!master_password) {
+            await t.rollback()
+            throw new Error('Master password required for encryption')
+          }
+          const kdfParams = item.kdf_params || {
+            memoryCost: 2 ** 16,
+            timeCost: 3,
+            parallelism: 1
+          }
+          const encryptionResult = await encrypt(
+            password,
+            master_password,
+            kdfParams
+          )
+          encryptedPassword = JSON.stringify(encryptionResult)
+        }
+
         await db.sequelize.query(
           `UPDATE vault_passwords 
-           SET password_encrypted = :password_encrypted, updated_at = CURRENT_TIMESTAMP
+           SET password_encrypted = :password_encrypted,
+               kdf_type = :kdf_type,
+               updated_at = CURRENT_TIMESTAMP
            WHERE id = :id AND user_id = :userId`,
           {
             replacements: {
               password_encrypted: encryptedPassword,
+              kdf_type:
+                (await getUserMekVersion(userId)) >= 1 ? 'mek' : 'argon2id',
               id,
               userId
             },
@@ -355,88 +454,6 @@ class Controller {
     } catch (err) {
       await t.rollback()
       console.error('Create vault error:', err)
-      res.status(500).json({ success: false, message: err.message })
-    }
-  }
-
-  static async getVaultLogs(req, res) {
-    try {
-      const userId = req.user.userId
-
-      const logs = await db.sequelize.query(
-        `
-        SELECT 
-          vl.id,
-          vl.action,
-          vl.created_at,
-          vp.name AS vault_name
-        FROM vault_logs vl
-        LEFT JOIN vault_passwords vp ON vl.vault_id = vp.id
-        WHERE vl.user_id = :userId
-        ORDER BY vl.created_at DESC
-        LIMIT 5
-      `,
-        {
-          replacements: { userId },
-          type: db.sequelize.QueryTypes.SELECT
-        }
-      )
-
-      return res.status(HTTP_OK).json(api.results(logs, HTTP_OK, { req }))
-    } catch (err) {
-      const code = err.code ?? INTERNAL_SERVER_ERROR
-      return res.status(code).json(api.results(null, code, { err }))
-    }
-  }
-
-  static async logAction(req, res) {
-    const t = await db.sequelize.transaction()
-    try {
-      const userId = req.user.userId
-      const { vaultId, action } = req.body
-
-      await VaultLog.create(
-        {
-          user_id: userId,
-          vault_id: vaultId,
-          action: action
-        },
-        { transaction: t }
-      )
-
-      await t.commit()
-      res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
-    } catch (err) {
-      await t.rollback()
-      console.error('Log action error:', err)
-    }
-  }
-
-  static async logRecentActivity(req, res) {
-    try {
-      const userId = req.user.userId
-
-      const result = await db.sequelize.query(
-        `
-      SELECT action, COUNT(*) AS total
-      FROM vault_logs
-      WHERE user_id = :userId
-      GROUP BY action
-      `,
-        {
-          replacements: { userId },
-          type: db.Sequelize.QueryTypes.SELECT
-        }
-      )
-
-      const summary = result.reduce((acc, row) => {
-        acc[row.action] = parseInt(row.total, 10)
-        return acc
-      }, {})
-
-      res.status(HTTP_OK).json(api.results(summary, HTTP_OK, { req }))
-    } catch (err) {
-      console.error('Log action error:', err)
       res.status(500).json({ success: false, message: err.message })
     }
   }

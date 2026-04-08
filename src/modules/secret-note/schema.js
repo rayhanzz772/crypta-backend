@@ -11,8 +11,10 @@ const createSecretNoteSchema = z.object({
     .min(1, 'Note cannot be empty')
     .max(10000, 'Note must not exceed 10000 characters'),
   master_password: z
-    .string({ required_error: 'Master password is required for encryption' })
-    .min(1, 'Master password cannot be empty'),
+    .string()
+    .min(1, 'Master password cannot be empty')
+    .optional(),
+  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
   category_id: z.string().optional().nullable(),
   tags: z
     .array(z.string().min(1).max(50))
@@ -37,6 +39,7 @@ const updateSecretNoteSchema = z.object({
     .string()
     .min(1, 'Master password cannot be empty')
     .optional(),
+  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
   category_id: z.string().optional().nullable(),
   tags: z
     .array(z.string().min(1).max(50))
@@ -47,8 +50,10 @@ const updateSecretNoteSchema = z.object({
 // Validation for decrypt
 const decryptSecretNoteSchema = z.object({
   master_password: z
-    .string({ required_error: 'Master password is required for decryption' })
+    .string()
     .min(1, 'Master password cannot be empty')
+    .optional(),
+  mek: z.string().length(64, 'MEK must be 64 hex characters').optional()
 })
 
 // Validation for ID param

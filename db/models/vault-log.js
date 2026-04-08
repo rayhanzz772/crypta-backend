@@ -4,9 +4,7 @@ const cuid = require('cuid')
 
 module.exports = (sequelize, DataTypes) => {
   class VaultLog extends Model {
-    static associate(models) {
-
-    }
+    static associate(models) {}
   }
 
   VaultLog.init(
@@ -14,24 +12,25 @@ module.exports = (sequelize, DataTypes) => {
       id: {
         type: DataTypes.STRING,
         primaryKey: true,
-        defaultValue: () => cuid(),
+        defaultValue: () => cuid()
       },
       user_id: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: false
       },
       vault_id: { type: DataTypes.STRING, allowNull: true },
+      note_id: { type: DataTypes.STRING, allowNull: true },
       action: { type: DataTypes.STRING, allowNull: false },
       created_at: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: DataTypes.NOW,
+        defaultValue: DataTypes.NOW
       },
       updated_at: {
         type: DataTypes.DATE,
         allowNull: false,
-        defaultValue: DataTypes.NOW,
-      },
+        defaultValue: DataTypes.NOW
+      }
     },
     {
       sequelize,

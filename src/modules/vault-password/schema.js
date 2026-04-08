@@ -16,8 +16,10 @@ const createVaultPasswordSchema = z.object({
     .max(1024, 'Password must not exceed 1024 characters'),
   note: z.string().max(5000, 'Note must not exceed 5000 characters').optional(),
   master_password: z
-    .string({ required_error: 'Master password is required for encryption' })
-    .min(1, 'Master password cannot be empty'),
+    .string()
+    .min(1, 'Master password cannot be empty')
+    .optional(),
+  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
   category_id: z.string().optional().nullable()
 })
 
@@ -42,14 +44,17 @@ const updateVaultPasswordSchema = z.object({
     .string()
     .min(1, 'Master password cannot be empty')
     .optional(),
+  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
   category: z.string().optional()
 })
 
 // Validation for decrypt
 const decryptVaultPasswordSchema = z.object({
   master_password: z
-    .string({ required_error: 'Master password is required for decryption' })
+    .string()
     .min(1, 'Master password cannot be empty')
+    .optional(),
+  mek: z.string().length(64, 'MEK must be 64 hex characters').optional()
 })
 
 // Validation for ID param
