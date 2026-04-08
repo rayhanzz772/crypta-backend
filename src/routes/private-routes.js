@@ -13,6 +13,7 @@ router.use('/categories', authMiddleware, require('../modules/category/index'))
 router.use('/vault', authMiddleware, require('../modules/vault-password/index'))
 router.use('/notes', authMiddleware, require('../modules/secret-note/index'))
 router.use('/tags', authMiddleware, require('../modules/tag/index'))
+router.use('/files', authMiddleware, require('../modules/secret-file/index'))
 router.use('/developer', authMiddleware, require('../modules/developer/index'))
 router.use('/activity', authMiddleware, require('../modules/log/index'))
 

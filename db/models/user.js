@@ -30,6 +30,16 @@ module.exports = (sequelize, DataTypes) => {
         as: 'logActivities'
       })
 
+      User.hasMany(models.File, {
+        foreignKey: 'user_id',
+        as: 'files'
+      })
+
+      User.hasMany(models.FileFolder, {
+        foreignKey: 'user_id',
+        as: 'fileFolders'
+      })
+
       User.hasMany(models.AnomalyLog, {
         foreignKey: 'user_id',
         as: 'anomalyLogs'
