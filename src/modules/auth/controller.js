@@ -267,11 +267,9 @@ exports.login = async (req, res) => {
       success: true,
       message: 'Login successful',
       data: {
-        token,
         user: {
           id: user.id,
           email: user.email,
-          createdAt: user.createdAt,
           mek_version: user.mek_version
         },
         mek: mekHex

@@ -128,7 +128,13 @@ class Controller {
   }
 
   static getClientIP(req) {
-    return req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip
+    const forwarded = req.headers['x-forwarded-for']
+    const rawIp = forwarded
+      ? String(forwarded).split(',')[0].trim()
+      : req.socket.remoteAddress || req.ip
+
+    // Normalize IPv4-mapped IPv6 format (::ffff:127.0.0.1)
+    return String(rawIp || '').replace('::ffff:', '')
   }
 
   static async checkVPN(ip) {
@@ -146,13 +152,44 @@ class Controller {
   }
 
   static async getLocation(ip) {
-    const response = await axios.get(`http://ip-api.com/json/${ip}`)
+    const fallback = {
+      country: 'Unknown',
+      city: null,
+      lat: null,
+      lon: null
+    }
 
-    return {
-      country: response.data.country,
-      city: response.data.city,
-      lat: response.data.lat,
-      lon: response.data.lon
+    if (!ip || isPrivateIP(ip)) {
+      return fallback
+    }
+
+    try {
+      const response = await axios.get(`http://ip-api.com/json/${ip}`, {
+        timeout: 2500
+      })
+
+      return {
+        country: response.data.country || fallback.country,
+        city: response.data.city || fallback.city,
+        lat: response.data.lat ?? fallback.lat,
+        lon: response.data.lon ?? fallback.lon
+      }
+    } catch (err) {
+      // Secondary provider to reduce login failures when one provider is down.
+      try {
+        const response = await axios.get(`https://ipwho.is/${ip}`, {
+          timeout: 2500
+        })
+
+        return {
+          country: response.data.country || fallback.country,
+          city: response.data.city || fallback.city,
+          lat: response.data.latitude ?? fallback.lat,
+          lon: response.data.longitude ?? fallback.lon
+        }
+      } catch {
+        return fallback
+      }
     }
   }
 }
