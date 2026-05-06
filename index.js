@@ -2,6 +2,7 @@ const express = require('express')
 const cors = require('cors')
 const http = require('http')
 const session = require('express-session')
+const cookieParser = require('cookie-parser')
 require('dotenv').config()
 
 const privateRoute = require('./src/routes/private-routes.js')
@@ -40,6 +41,7 @@ app.use(
 )
 
 app.use(express.json())
+app.use(cookieParser())
 
 // Session for Two-Step Recovery
 app.use(

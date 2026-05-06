@@ -3,16 +3,22 @@ const jwt = require('jsonwebtoken')
 const db = require('../../db/models')
 
 const authMiddleware = async (req, res, next) => {
+  // Read token from httpOnly cookie first, then fall back to Authorization header
+  const cookieToken = req.cookies?.token
   const authHeader = req.headers.authorization
+  const headerToken =
+    authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : null
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = cookieToken || headerToken
+
+  if (!token) {
     return res.status(401).json({
       success: false,
       message: 'No token provided'
     })
   }
-
-  const token = authHeader.split(' ')[1]
   try {
     // Verifikasi token
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
