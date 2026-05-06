@@ -25,7 +25,13 @@ const authMiddleware = async (req, res, next) => {
 
     const user = await db.User.findByPk(decoded.userId)
     if (!user || user.is_blocked) {
-      res.clearCookie('token')
+      const isProduction = process.env.NODE_ENV === 'production'
+      res.clearCookie('token', {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        domain: isProduction ? process.env.COOKIE_DOMAIN : undefined
+      })
 
       return res.status(403).json({
         success: false,

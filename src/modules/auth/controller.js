@@ -208,10 +208,12 @@ exports.login = async (req, res) => {
     }
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' })
 
+    const isProduction = process.env.NODE_ENV === 'production'
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isProduction,                              // HTTPS only in prod
+      sameSite: isProduction ? 'none' : 'lax',          // 'none' required for cross-origin in prod
+      domain: isProduction ? process.env.COOKIE_DOMAIN : undefined, // e.g. '.rayhanprojects.site'
       maxAge: 7 * 24 * 60 * 60 * 1000
     })
 
