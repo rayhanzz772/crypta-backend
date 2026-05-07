@@ -12,6 +12,7 @@ const BAD_REQUEST = HttpStatusCode?.BadRequest || 400
 const { encrypt, decrypt } = require('../../utils/encryption')
 // MEK-based encryption (direct AES-256-GCM)
 const { encryptData, decryptData } = require('../../utils/mek')
+const { generateVaultXLSX } = require('../../utils/excel')
 
 /**
  * Helper: Get user's mek_version to decide encryption path
@@ -50,6 +51,7 @@ class Controller {
 
       const mekVersion = await getUserMekVersion(userId)
       let encryptedPassword
+      let encryptedUsername = username || null
 
       if (mekVersion >= 1) {
         // --- MEK path: fast AES-256-GCM ---
@@ -62,6 +64,10 @@ class Controller {
         }
         const encrypted = encryptData(password, mek)
         encryptedPassword = JSON.stringify(encrypted)
+        // Encrypt username with MEK if provided
+        if (username) {
+          encryptedUsername = JSON.stringify(encryptData(username, mek))
+        }
       } else {
         // --- Legacy path: Argon2id per-item ---
         if (!master_password) {
@@ -77,13 +83,14 @@ class Controller {
         }
         const encrypted = await encrypt(password, master_password, kdfParams)
         encryptedPassword = JSON.stringify(encrypted)
+        // Legacy path: username stored as plaintext (no MEK available)
       }
 
       const item = await VaultPassword.create(
         {
           user_id: userId,
           name,
-          username,
+          username: encryptedUsername,
           password_encrypted: encryptedPassword,
           category_id: category_id || null,
           note,
@@ -156,7 +163,6 @@ class Controller {
         SELECT 
           vp.id, 
           vp.name, 
-          vp.username, 
           vp.note, 
           TO_CHAR(vp.created_at, 'YYYY/MM/DD') AS created_at,
           TO_CHAR(vp.updated_at, 'YYYY/MM/DD') AS updated_at,
@@ -242,7 +248,8 @@ class Controller {
         throw new Error('Invalid encrypted data format')
       }
 
-      let decrypted
+      let decryptedPassword
+      let decryptedUsername = item.username
 
       // Determine decryption method
       if (item.kdf_type === 'mek' || encryptedObj.ciphertext) {
@@ -254,7 +261,19 @@ class Controller {
             message: 'MEK is required for decryption (obtain from login)'
           })
         }
-        decrypted = decryptData(encryptedObj, mek)
+        decryptedPassword = decryptData(encryptedObj, mek)
+        // Decrypt username if it was encrypted (MEK path)
+        if (item.username) {
+          try {
+            const usernameObj = JSON.parse(item.username)
+            if (usernameObj && usernameObj.ciphertext) {
+              decryptedUsername = decryptData(usernameObj, mek)
+            }
+          } catch {
+            // username was stored as plaintext (legacy record)
+            decryptedUsername = item.username
+          }
+        }
       } else {
         // --- Legacy path ---
         if (!master_password) {
@@ -270,7 +289,12 @@ class Controller {
             message: `Unsupported KDF type: ${kdf_type}`
           })
         }
-        decrypted = await decrypt(encryptedObj, master_password, kdf_params)
+        decryptedPassword = await decrypt(
+          encryptedObj,
+          master_password,
+          kdf_params
+        )
+        // Legacy path: username is plaintext
       }
 
       await VaultLog.create({
@@ -284,8 +308,8 @@ class Controller {
         id: item.id,
         category: item.category_name,
         name: item.name,
-        username: item.username,
-        password: decrypted,
+        username: decryptedUsername,
+        password: decryptedPassword,
         updated_at: item.updated_at,
         note: item.note
       }
@@ -390,7 +414,24 @@ class Controller {
       // Update other fields using Sequelize ORM
       const updateData = {}
       if (name) updateData.name = name
-      if (username !== undefined) updateData.username = username
+      if (username !== undefined) {
+        const mekVersion = await getUserMekVersion(userId)
+        if (mekVersion >= 1 && username) {
+          // MEK path: encrypt updated username
+          const mek = parseMEK(mekHex)
+          if (!mek) {
+            await t.rollback()
+            return res.status(400).json({
+              success: false,
+              message: 'MEK is required to encrypt username'
+            })
+          }
+          updateData.username = JSON.stringify(encryptData(username, mek))
+        } else {
+          // Legacy path or empty username: store as-is
+          updateData.username = username
+        }
+      }
       if (note !== undefined) updateData.note = note
       if (categoryRecord) updateData.category_id = categoryRecord.id
 
@@ -506,6 +547,114 @@ class Controller {
       res
         .status(INTERNAL_SERVER_ERROR)
         .json({ success: false, message: err.message })
+    }
+  }
+  static async exportVaultCSV(req, res) {
+    try {
+      const userId = req.user.userId
+      const { mek: mekHex } = req.body
+
+      const mek = parseMEK(mekHex)
+      if (!mek) {
+        return res.status(400).json({
+          success: false,
+          message: 'MEK is required for export (obtain from login)'
+        })
+      }
+
+      // Fetch all vault items for this user
+      const items = await db.sequelize.query(
+        `
+        SELECT
+          vp.id,
+          vp.name,
+          vp.username,
+          vp.password_encrypted,
+          vp.note,
+          vp.kdf_type,
+          vp.kdf_params,
+          vp.created_at,
+          vp.updated_at,
+          c.name AS category_name
+        FROM vault_passwords vp
+        LEFT JOIN categories c ON vp.category_id = c.id
+        WHERE vp.user_id = :userId
+          AND vp.deleted_at IS NULL
+        ORDER BY c.name ASC NULLS LAST, vp.name ASC
+        `,
+        {
+          replacements: { userId },
+          type: db.sequelize.QueryTypes.SELECT
+        }
+      )
+
+      // Decrypt each item
+      const decryptedItems = []
+      for (const item of items) {
+        let decryptedPassword = ''
+        let decryptedUsername = ''
+
+        try {
+          // Decrypt password
+          const encryptedObj = JSON.parse(item.password_encrypted)
+          if (item.kdf_type === 'mek' || encryptedObj.ciphertext) {
+            decryptedPassword = decryptData(encryptedObj, mek)
+          } else {
+            // Legacy items without MEK cannot be decrypted here
+            decryptedPassword = '[legacy-encrypted]'
+          }
+        } catch {
+          decryptedPassword = '[decrypt-error]'
+        }
+
+        try {
+          // Decrypt username
+          if (item.username) {
+            const usernameObj = JSON.parse(item.username)
+            if (usernameObj && usernameObj.ciphertext) {
+              decryptedUsername = decryptData(usernameObj, mek)
+            } else {
+              decryptedUsername = item.username
+            }
+          }
+        } catch {
+          // Username stored as plaintext (legacy record)
+          decryptedUsername = item.username || ''
+        }
+
+        decryptedItems.push({
+          name: item.name || '',
+          username: decryptedUsername,
+          password: decryptedPassword,
+          note: item.note || '',
+          category: item.category_name || 'Uncategorized',
+          created_at: item.created_at
+            ? new Date(item.created_at).toISOString().slice(0, 10)
+            : '',
+          updated_at: item.updated_at
+            ? new Date(item.updated_at).toISOString().slice(0, 10)
+            : ''
+        })
+      }
+
+      // --- Build XLSX ---
+      const xlsxBuffer = await generateVaultXLSX(decryptedItems)
+      const filename = `crypta-export-${new Date().toISOString().slice(0, 10)}.xlsx`
+
+      // Log the export action
+      await db.VaultLog.create({
+        user_id: userId,
+        vault_id: null,
+        action: `Exported ${decryptedItems.length} vault item(s) to XLSX`
+      }).catch(() => {}) // non-blocking, best effort
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+      res.setHeader('Cache-Control', 'no-store')
+      return res.status(200).send(xlsxBuffer)
+    } catch (err) {
+      console.error('Export CSV error:', err)
+      res.status(500).json({ success: false, message: err.message })
     }
   }
 }

@@ -97,6 +97,11 @@ const logActionSchema = z.object({
     .max(255, 'Action must not exceed 255 characters')
 })
 
+// Validation for export
+const exportVaultSchema = z.object({
+  mek: z.string().length(64, 'MEK must be 64 hex characters')
+})
+
 module.exports = {
   createVaultPasswordSchema,
   updateVaultPasswordSchema,
@@ -104,5 +109,6 @@ module.exports = {
   idParamSchema,
   getVaultPasswordsQuerySchema,
   toggleFavoriteSchema,
-  logActionSchema
+  logActionSchema,
+  exportVaultSchema
 }
