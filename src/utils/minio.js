@@ -21,13 +21,6 @@ function getMinioClient() {
       'MinIO is not configured. Set MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY.'
     )
   }
-
-  console.log('Connecting to MinIO:', {
-    endPoint: MINIO_ENDPOINT,
-    port: MINIO_PORT,
-    useSSL: MINIO_USE_SSL
-  })
-
   return new Minio.Client({
     endPoint: MINIO_ENDPOINT,
     port: MINIO_PORT ? Number(MINIO_PORT) : 9000,
@@ -107,7 +100,7 @@ async function uploadEncryptedFile({
   const client = getMinioClient()
   const bucketName = process.env.MINIO_BUCKET || 'crypta-files'
 
-  // await ensureBucketExists(client, bucketName)
+  await ensureBucketExists(client, bucketName)
 
   const encryptionKey = resolveEncryptionKey(mekHex)
   const { encrypted, iv, tag } = encryptBufferAES256GCM(
