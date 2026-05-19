@@ -7,11 +7,11 @@ const {
   registerSchema,
   verifyRecoverySchema,
   resetPasswordSchema,
-  migrateToMekSchema,
   verifyEmailSchema,
   resendVerificationSchema
 } = require('./schema')
 
+router.get('/salt', Controller.getSalt)
 router.post('/login', validateRequest({ body: loginSchema }), Controller.login)
 router.post('/logout', Controller.logout)
 router.post(
@@ -31,13 +31,6 @@ router.post(
   '/reset-password',
   validateRequest({ body: resetPasswordSchema }),
   Controller.resetPassword
-)
-
-router.post(
-  '/migrate-to-mek',
-  authMiddleware,
-  validateRequest({ body: migrateToMekSchema }),
-  Controller.migrateToMEK
 )
 
 router.post(

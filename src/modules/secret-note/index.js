@@ -6,17 +6,12 @@ const validateRequest = require('../../middleware/validateRequest')
 const {
   createSecretNoteSchema,
   updateSecretNoteSchema,
-  decryptSecretNoteSchema,
   idParamSchema,
   getSecretNotesQuerySchema,
   toggleFavoriteSchema
 } = require('./schema')
 
-const decryptLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000,
-  max: 5,
-  message: 'Too many decryption attempts. Try again later.'
-})
+
 
 router.post(
   '/',
@@ -28,12 +23,7 @@ router.get(
   validateRequest({ query: getSecretNotesQuerySchema }),
   Controller.getSecretNotes
 )
-router.post(
-  '/:id/decrypt',
-  validateRequest({ params: idParamSchema, body: decryptSecretNoteSchema }),
-  decryptLimiter,
-  Controller.decryptSecretNote
-)
+
 router.delete(
   '/:id/delete',
   validateRequest({ params: idParamSchema }),

@@ -5,16 +5,11 @@ const createSecretNoteSchema = z.object({
   title: z
     .string({ required_error: 'Title is required' })
     .min(1, 'Title cannot be empty')
-    .max(255, 'Title must not exceed 255 characters'),
+    .max(5000, 'Title must not exceed 5000 characters'),
   note: z
     .string({ required_error: 'Note content is required' })
     .min(1, 'Note cannot be empty')
-    .max(10000, 'Note must not exceed 10000 characters'),
-  master_password: z
-    .string()
-    .min(1, 'Master password cannot be empty')
-    .optional(),
-  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
+    .max(500000, 'Note must not exceed 500000 characters'),
   category_id: z.string().optional().nullable(),
   tags: z
     .array(z.string().min(1).max(50))
@@ -28,18 +23,13 @@ const updateSecretNoteSchema = z.object({
   title: z
     .string()
     .min(1, 'Title cannot be empty')
-    .max(255, 'Title must not exceed 255 characters')
+    .max(5000, 'Title must not exceed 5000 characters')
     .optional(),
   note: z
     .string()
     .min(1, 'Note cannot be empty')
-    .max(10000, 'Note must not exceed 10000 characters')
+    .max(500000, 'Note must not exceed 500000 characters')
     .optional(),
-  master_password: z
-    .string()
-    .min(1, 'Master password cannot be empty')
-    .optional(),
-  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
   category_id: z.string().optional().nullable(),
   tags: z
     .array(z.string().min(1).max(50))
@@ -47,14 +37,7 @@ const updateSecretNoteSchema = z.object({
     .optional()
 })
 
-// Validation for decrypt
-const decryptSecretNoteSchema = z.object({
-  master_password: z
-    .string()
-    .min(1, 'Master password cannot be empty')
-    .optional(),
-  mek: z.string().length(64, 'MEK must be 64 hex characters').optional()
-})
+
 
 // Validation for ID param
 const idParamSchema = z.object({
@@ -88,7 +71,6 @@ const toggleFavoriteSchema = z.object({
 module.exports = {
   createSecretNoteSchema,
   updateSecretNoteSchema,
-  decryptSecretNoteSchema,
   idParamSchema,
   getSecretNotesQuerySchema,
   toggleFavoriteSchema

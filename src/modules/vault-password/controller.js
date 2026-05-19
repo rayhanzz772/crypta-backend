@@ -8,11 +8,7 @@ const INTERNAL_SERVER_ERROR = HttpStatusCode?.InternalServerError || 500
 const NOT_FOUND = HttpStatusCode?.NotFound || 404
 const BAD_REQUEST = HttpStatusCode?.BadRequest || 400
 
-// Legacy encryption (Argon2id per-item)
-const { encrypt, decrypt } = require('../../utils/encryption')
-// MEK-based encryption (direct AES-256-GCM)
-const { encryptData, decryptData } = require('../../utils/mek')
-const { generateVaultXLSX } = require('../../utils/excel')
+
 
 /**
  * Helper: Get user's mek_version to decide encryption path
@@ -41,68 +37,22 @@ class Controller {
       const {
         name,
         username,
-        password,
+        password_encrypted,
         note,
-        master_password,
-        mek: mekHex,
         category_id
       } = req.body
       const userId = req.user.userId
-
-      const mekVersion = await getUserMekVersion(userId)
-      let encryptedPassword
-      let encryptedUsername = username || null
-
-      if (mekVersion >= 1) {
-        // --- MEK path: fast AES-256-GCM ---
-        const mek = parseMEK(mekHex)
-        if (!mek) {
-          return res.status(400).json({
-            success: false,
-            message: 'MEK is required for encryption (obtain from login)'
-          })
-        }
-        const encrypted = encryptData(password, mek)
-        encryptedPassword = JSON.stringify(encrypted)
-        // Encrypt username with MEK if provided
-        if (username) {
-          encryptedUsername = JSON.stringify(encryptData(username, mek))
-        }
-      } else {
-        // --- Legacy path: Argon2id per-item ---
-        if (!master_password) {
-          return res.status(400).json({
-            success: false,
-            message: 'Master password required for encryption'
-          })
-        }
-        const kdfParams = {
-          memoryCost: 2 ** 16,
-          timeCost: 3,
-          parallelism: 1
-        }
-        const encrypted = await encrypt(password, master_password, kdfParams)
-        encryptedPassword = JSON.stringify(encrypted)
-        // Legacy path: username stored as plaintext (no MEK available)
-      }
 
       const item = await VaultPassword.create(
         {
           user_id: userId,
           name,
-          username: encryptedUsername,
-          password_encrypted: encryptedPassword,
+          username: username || null,
+          password_encrypted,
           category_id: category_id || null,
           note,
-          kdf_type: mekVersion >= 1 ? 'mek' : 'argon2id',
-          kdf_params:
-            mekVersion >= 1
-              ? null
-              : {
-                  memoryCost: 2 ** 16,
-                  timeCost: 3,
-                  parallelism: 1
-                }
+          kdf_type: 'mek',
+          kdf_params: null
         },
         { transaction: t }
       )
@@ -111,19 +61,16 @@ class Controller {
         throw new Error('Failed to create vault item')
       }
 
-      if (item && item.id) {
-        await VaultLog.create(
-          {
-            user_id: userId,
-            vault_id: item.id,
-            action: 'Create new password'
-          },
-          { transaction: t }
-        )
-      }
+      await VaultLog.create(
+        {
+          user_id: userId,
+          vault_id: item.id,
+          action: 'Create new password'
+        },
+        { transaction: t }
+      )
 
       await t.commit()
-
       return res.status(HTTP_OK).json(api.results(null, HTTP_OK, { req }))
     } catch (err) {
       await t.rollback()
@@ -163,7 +110,11 @@ class Controller {
         SELECT 
           vp.id, 
           vp.name, 
+          vp.username,
+          vp.password_encrypted,
           vp.note, 
+          vp.kdf_type,
+          vp.kdf_params,
           TO_CHAR(vp.created_at, 'YYYY/MM/DD') AS created_at,
           TO_CHAR(vp.updated_at, 'YYYY/MM/DD') AS updated_at,
           c.name AS category_name,
@@ -211,115 +162,7 @@ class Controller {
     }
   }
 
-  static async decryptVaultPassword(req, res) {
-    try {
-      const { id } = req.params
-      const { master_password, mek: mekHex } = req.body
-      const userId = req.user.userId
-
-      const item = await db.sequelize
-        .query(
-          `
-        SELECT
-          vp.*,
-          categories.name AS category_name
-        FROM vault_passwords as vp
-        LEFT JOIN categories ON vp.category_id = categories.id
-        WHERE vp.id = :id AND vp.user_id = :userId
-        AND vp.deleted_at IS NULL
-      `,
-          {
-            replacements: { id, userId },
-            type: db.sequelize.QueryTypes.SELECT
-          }
-        )
-        .then((results) => results[0])
-
-      if (!item) {
-        return res
-          .status(404)
-          .json({ success: false, message: 'Vault item not found' })
-      }
-
-      let encryptedObj
-      try {
-        encryptedObj = JSON.parse(item.password_encrypted)
-      } catch {
-        throw new Error('Invalid encrypted data format')
-      }
-
-      let decryptedPassword
-      let decryptedUsername = item.username
-
-      // Determine decryption method
-      if (item.kdf_type === 'mek' || encryptedObj.ciphertext) {
-        // --- MEK path ---
-        const mek = parseMEK(mekHex)
-        if (!mek) {
-          return res.status(400).json({
-            success: false,
-            message: 'MEK is required for decryption (obtain from login)'
-          })
-        }
-        decryptedPassword = decryptData(encryptedObj, mek)
-        // Decrypt username if it was encrypted (MEK path)
-        if (item.username) {
-          try {
-            const usernameObj = JSON.parse(item.username)
-            if (usernameObj && usernameObj.ciphertext) {
-              decryptedUsername = decryptData(usernameObj, mek)
-            }
-          } catch {
-            // username was stored as plaintext (legacy record)
-            decryptedUsername = item.username
-          }
-        }
-      } else {
-        // --- Legacy path ---
-        if (!master_password) {
-          return res.status(400).json({
-            success: false,
-            message: 'Master password is required for decryption'
-          })
-        }
-        const { kdf_type, kdf_params } = item
-        if (kdf_type !== 'argon2id') {
-          return res.status(400).json({
-            success: false,
-            message: `Unsupported KDF type: ${kdf_type}`
-          })
-        }
-        decryptedPassword = await decrypt(
-          encryptedObj,
-          master_password,
-          kdf_params
-        )
-        // Legacy path: username is plaintext
-      }
-
-      await VaultLog.create({
-        user_id: userId,
-        vault_id: item.id,
-        action: 'Decrypted password',
-        timestamp: new Date()
-      })
-
-      const items = {
-        id: item.id,
-        category: item.category_name,
-        name: item.name,
-        username: decryptedUsername,
-        password: decryptedPassword,
-        updated_at: item.updated_at,
-        note: item.note
-      }
-
-      return res.status(HTTP_OK).json(api.results(items, HTTP_OK, { req }))
-    } catch (err) {
-      console.error('Decrypt error:', err)
-      res.status(500).json({ success: false, message: err.message })
-    }
-  }
+  // decryptVaultPassword removed for pure ZKE
 
   static async updateVaultPassword(req, res) {
     const t = await db.sequelize.transaction()
@@ -328,10 +171,8 @@ class Controller {
       const {
         name,
         username,
-        password,
+        password_encrypted,
         note,
-        master_password,
-        mek: mekHex,
         category
       } = req.body
       const userId = req.user.userId
@@ -345,41 +186,7 @@ class Controller {
         throw new Error('Vault item not found')
       }
 
-      if (password) {
-        const mekVersion = await getUserMekVersion(userId)
-        let encryptedPassword
-
-        if (mekVersion >= 1) {
-          // --- MEK path ---
-          const mek = parseMEK(mekHex)
-          if (!mek) {
-            await t.rollback()
-            return res.status(400).json({
-              success: false,
-              message: 'MEK is required for encryption'
-            })
-          }
-          const encrypted = encryptData(password, mek)
-          encryptedPassword = JSON.stringify(encrypted)
-        } else {
-          // --- Legacy path ---
-          if (!master_password) {
-            await t.rollback()
-            throw new Error('Master password required for encryption')
-          }
-          const kdfParams = item.kdf_params || {
-            memoryCost: 2 ** 16,
-            timeCost: 3,
-            parallelism: 1
-          }
-          const encryptionResult = await encrypt(
-            password,
-            master_password,
-            kdfParams
-          )
-          encryptedPassword = JSON.stringify(encryptionResult)
-        }
-
+      if (password_encrypted) {
         await db.sequelize.query(
           `UPDATE vault_passwords 
            SET password_encrypted = :password_encrypted,
@@ -388,9 +195,8 @@ class Controller {
            WHERE id = :id AND user_id = :userId`,
           {
             replacements: {
-              password_encrypted: encryptedPassword,
-              kdf_type:
-                (await getUserMekVersion(userId)) >= 1 ? 'mek' : 'argon2id',
+              password_encrypted,
+              kdf_type: 'mek',
               id,
               userId
             },
@@ -411,27 +217,9 @@ class Controller {
         }
       }
 
-      // Update other fields using Sequelize ORM
       const updateData = {}
-      if (name) updateData.name = name
-      if (username !== undefined) {
-        const mekVersion = await getUserMekVersion(userId)
-        if (mekVersion >= 1 && username) {
-          // MEK path: encrypt updated username
-          const mek = parseMEK(mekHex)
-          if (!mek) {
-            await t.rollback()
-            return res.status(400).json({
-              success: false,
-              message: 'MEK is required to encrypt username'
-            })
-          }
-          updateData.username = JSON.stringify(encryptData(username, mek))
-        } else {
-          // Legacy path or empty username: store as-is
-          updateData.username = username
-        }
-      }
+      if (name !== undefined) updateData.name = name
+      if (username !== undefined) updateData.username = username
       if (note !== undefined) updateData.note = note
       if (categoryRecord) updateData.category_id = categoryRecord.id
 
@@ -549,114 +337,7 @@ class Controller {
         .json({ success: false, message: err.message })
     }
   }
-  static async exportVaultCSV(req, res) {
-    try {
-      const userId = req.user.userId
-      const { mek: mekHex } = req.body
-
-      const mek = parseMEK(mekHex)
-      if (!mek) {
-        return res.status(400).json({
-          success: false,
-          message: 'MEK is required for export (obtain from login)'
-        })
-      }
-
-      // Fetch all vault items for this user
-      const items = await db.sequelize.query(
-        `
-        SELECT
-          vp.id,
-          vp.name,
-          vp.username,
-          vp.password_encrypted,
-          vp.note,
-          vp.kdf_type,
-          vp.kdf_params,
-          vp.created_at,
-          vp.updated_at,
-          c.name AS category_name
-        FROM vault_passwords vp
-        LEFT JOIN categories c ON vp.category_id = c.id
-        WHERE vp.user_id = :userId
-          AND vp.deleted_at IS NULL
-        ORDER BY c.name ASC NULLS LAST, vp.name ASC
-        `,
-        {
-          replacements: { userId },
-          type: db.sequelize.QueryTypes.SELECT
-        }
-      )
-
-      // Decrypt each item
-      const decryptedItems = []
-      for (const item of items) {
-        let decryptedPassword = ''
-        let decryptedUsername = ''
-
-        try {
-          // Decrypt password
-          const encryptedObj = JSON.parse(item.password_encrypted)
-          if (item.kdf_type === 'mek' || encryptedObj.ciphertext) {
-            decryptedPassword = decryptData(encryptedObj, mek)
-          } else {
-            // Legacy items without MEK cannot be decrypted here
-            decryptedPassword = '[legacy-encrypted]'
-          }
-        } catch {
-          decryptedPassword = '[decrypt-error]'
-        }
-
-        try {
-          // Decrypt username
-          if (item.username) {
-            const usernameObj = JSON.parse(item.username)
-            if (usernameObj && usernameObj.ciphertext) {
-              decryptedUsername = decryptData(usernameObj, mek)
-            } else {
-              decryptedUsername = item.username
-            }
-          }
-        } catch {
-          // Username stored as plaintext (legacy record)
-          decryptedUsername = item.username || ''
-        }
-
-        decryptedItems.push({
-          name: item.name || '',
-          username: decryptedUsername,
-          password: decryptedPassword,
-          note: item.note || '',
-          category: item.category_name || 'Uncategorized',
-          created_at: item.created_at
-            ? new Date(item.created_at).toISOString().slice(0, 10)
-            : '',
-          updated_at: item.updated_at
-            ? new Date(item.updated_at).toISOString().slice(0, 10)
-            : ''
-        })
-      }
-
-      // --- Build XLSX ---
-      const xlsxBuffer = await generateVaultXLSX(decryptedItems)
-      const filename = `crypta-export-${new Date().toISOString().slice(0, 10)}.xlsx`
-
-      // Log the export action
-      await db.VaultLog.create({
-        user_id: userId,
-        vault_id: null,
-        action: `Exported ${decryptedItems.length} vault item(s) to XLSX`
-      }).catch(() => {}) // non-blocking, best effort
-
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-      res.setHeader('Cache-Control', 'no-store')
-      return res.status(200).send(xlsxBuffer)
-    } catch (err) {
-      console.error('Export CSV error:', err)
-      res.status(500).json({ success: false, message: err.message })
-    }
-  }
+  // exportVaultCSV removed for pure ZKE
 }
 
 module.exports = Controller

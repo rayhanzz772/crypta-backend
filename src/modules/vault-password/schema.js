@@ -8,18 +8,12 @@ const createVaultPasswordSchema = z.object({
     .max(255, 'Name must not exceed 255 characters'),
   username: z
     .string()
-    .max(255, 'Username must not exceed 255 characters')
+    .max(5000, 'Username must not exceed 5000 characters')
     .optional(),
-  password: z
-    .string({ required_error: 'Password is required' })
-    .min(1, 'Password cannot be empty')
-    .max(1024, 'Password must not exceed 1024 characters'),
+  password_encrypted: z
+    .string({ required_error: 'Encrypted password is required' })
+    .min(1, 'Encrypted password cannot be empty'),
   note: z.string().max(5000, 'Note must not exceed 5000 characters').optional(),
-  master_password: z
-    .string()
-    .min(1, 'Master password cannot be empty')
-    .optional(),
-  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
   category_id: z.string().optional().nullable()
 })
 
@@ -32,29 +26,14 @@ const updateVaultPasswordSchema = z.object({
     .optional(),
   username: z
     .string()
-    .max(255, 'Username must not exceed 255 characters')
+    .max(5000, 'Username must not exceed 5000 characters')
     .optional(),
-  password: z
+  password_encrypted: z
     .string()
-    .min(1, 'Password cannot be empty')
-    .max(1024, 'Password must not exceed 1024 characters')
+    .min(1, 'Encrypted password cannot be empty')
     .optional(),
   note: z.string().max(5000, 'Note must not exceed 5000 characters').optional(),
-  master_password: z
-    .string()
-    .min(1, 'Master password cannot be empty')
-    .optional(),
-  mek: z.string().length(64, 'MEK must be 64 hex characters').optional(),
   category: z.string().optional()
-})
-
-// Validation for decrypt
-const decryptVaultPasswordSchema = z.object({
-  master_password: z
-    .string()
-    .min(1, 'Master password cannot be empty')
-    .optional(),
-  mek: z.string().length(64, 'MEK must be 64 hex characters').optional()
 })
 
 // Validation for ID param
@@ -97,18 +76,11 @@ const logActionSchema = z.object({
     .max(255, 'Action must not exceed 255 characters')
 })
 
-// Validation for export
-const exportVaultSchema = z.object({
-  mek: z.string().length(64, 'MEK must be 64 hex characters')
-})
-
 module.exports = {
   createVaultPasswordSchema,
   updateVaultPasswordSchema,
-  decryptVaultPasswordSchema,
   idParamSchema,
   getVaultPasswordsQuerySchema,
   toggleFavoriteSchema,
-  logActionSchema,
-  exportVaultSchema
+  logActionSchema
 }

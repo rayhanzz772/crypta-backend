@@ -6,24 +6,12 @@ const validateRequest = require('../../middleware/validateRequest')
 const {
   createVaultPasswordSchema,
   updateVaultPasswordSchema,
-  decryptVaultPasswordSchema,
   idParamSchema,
   getVaultPasswordsQuerySchema,
-  toggleFavoriteSchema,
-  exportVaultSchema
+  toggleFavoriteSchema
 } = require('./schema')
 
-const decryptLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 menit
-  max: 5,
-  message: 'Too many decryption attempts. Try again later.'
-})
 
-const exportLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 menit
-  max: 10,
-  message: 'Too many export attempts. Please wait before exporting again.'
-})
 
 // Semua route vault butuh token JWT
 router.post(
@@ -36,12 +24,7 @@ router.get(
   validateRequest({ query: getVaultPasswordsQuerySchema }),
   Controller.getVaultPasswords
 )
-router.post(
-  '/:id/decrypt',
-  validateRequest({ params: idParamSchema, body: decryptVaultPasswordSchema }),
-  decryptLimiter,
-  Controller.decryptVaultPassword
-)
+
 router.delete(
   '/:id/delete',
   validateRequest({ params: idParamSchema }),
@@ -59,11 +42,6 @@ router.post(
   Controller.toggleFavorite
 )
 
-router.post(
-  '/export',
-  exportLimiter,
-  validateRequest({ body: exportVaultSchema }),
-  Controller.exportVaultCSV
-)
+
 
 module.exports = router
