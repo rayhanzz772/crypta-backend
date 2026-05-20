@@ -4,42 +4,49 @@ const loginSchema = z.object({
   email: z
     .string({ required_error: 'Email is required' })
     .email('Invalid email format'),
-  master_password: z
-    .string({ required_error: 'Master password is required' })
-    .min(1, 'Master password cannot be empty')
+  master_hash: z
+    .string({ required_error: 'Master hash is required' })
+    .min(1, 'Master hash cannot be empty')
 })
 
 const registerSchema = z.object({
   email: z
     .string({ required_error: 'Email is required' })
     .email('Invalid email format'),
-  master_password: z
-    .string({ required_error: 'Master password is required' })
-    .min(8, 'Master password must be at least 8 characters')
-    .max(128, 'Master password must not exceed 128 characters')
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-      'Master password must contain at least one uppercase, one lowercase, and one number'
-    )
+  master_hash: z
+    .string({ required_error: 'Master hash is required' })
+    .min(1, 'Master hash cannot be empty'),
+  kek_salt: z.string().min(1, 'KEK salt is required'),
+  encrypted_mek_by_password: z.string().min(1, 'Encrypted MEK by password is required'),
+  mek_pw_iv: z.string().min(1, 'MEK password IV is required'),
+  mek_pw_tag: z.string().min(1, 'MEK password tag is required'),
+  encrypted_mek_by_recovery: z.string().min(1, 'Encrypted MEK by recovery is required'),
+  mek_rc_iv: z.string().min(1, 'MEK recovery IV is required'),
+  mek_rc_tag: z.string().min(1, 'MEK recovery tag is required')
 })
 
 const verifyRecoverySchema = z.object({
-  email: z.string().email('Invalid email format'),
-  recovery_key: z.string().min(1, 'Recovery key is required')
+  email: z.string().email('Invalid email format')
 })
 
 const resetPasswordSchema = z.object({
-  new_password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128)
-    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Password mixed complex required')
+  email: z.string().email('Invalid email format'),
+  new_master_hash: z.string().min(1, 'New master hash is required'),
+  new_kek_salt: z.string().min(1, 'New KEK salt is required'),
+  encrypted_mek_by_password: z.string().min(1, 'Encrypted MEK by password is required'),
+  mek_pw_iv: z.string().min(1, 'MEK password IV is required'),
+  mek_pw_tag: z.string().min(1, 'MEK password tag is required')
 })
 
 const migrateToMekSchema = z.object({
-  master_password: z
-    .string({ required_error: 'Master password is required' })
-    .min(1, 'Master password cannot be empty')
+  master_hash: z.string().min(1, 'Master hash is required'),
+  kek_salt: z.string().min(1, 'KEK salt is required'),
+  encrypted_mek_by_password: z.string().min(1, 'Encrypted MEK by password is required'),
+  mek_pw_iv: z.string().min(1, 'MEK password IV is required'),
+  mek_pw_tag: z.string().min(1, 'MEK password tag is required'),
+  encrypted_mek_by_recovery: z.string().min(1, 'Encrypted MEK by recovery is required'),
+  mek_rc_iv: z.string().min(1, 'MEK recovery IV is required'),
+  mek_rc_tag: z.string().min(1, 'MEK recovery tag is required')
 })
 
 const verifyEmailSchema = z.object({

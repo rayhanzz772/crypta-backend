@@ -4,18 +4,9 @@ const User = db.User
 const bcrypt = require('bcrypt')
 const { checkPasswordBreach } = require('../../utils/pwnedCheck')
 const {
-  generateMEK,
-  generateSalt,
-  deriveKEK,
-  wrapMEK,
-  unwrapMEK
-} = require('../../utils/mek')
-const {
   generateRecoveryKey,
   parseRecoveryKey
 } = require('../../utils/recovery-key')
-const { decrypt } = require('../../utils/encryption')
-const { encryptData } = require('../../utils/mek')
 const Detection = require('../../services/detection')
 const {
   buildFeatureVector
@@ -27,16 +18,36 @@ const { handleRiskTrigger } = require('../../services/triggerRisk')
 const HttpStatusCode = require('axios').HttpStatusCode
 const { api } = require('../../utils/api')
 
+exports.getSalt = async (req, res) => {
+  try {
+    const { email } = req.query
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' })
+    }
+    const user = await User.findOne({ where: { email } })
+    if (!user || !user.kek_salt) {
+      return res.status(404).json({ success: false, message: 'Salt not found' })
+    }
+    return res.json({ success: true, data: { kek_salt: user.kek_salt } })
+  } catch (error) {
+    console.error('getSalt error:', error)
+    return res.status(500).json({ success: false, message: 'Internal Server Error' })
+  }
+}
+
 exports.register = async (req, res) => {
   try {
-    const { email, master_password } = req.body
-
-    if (!email || !master_password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and master_password are required'
-      })
-    }
+    const { 
+      email, 
+      master_hash,
+      kek_salt,
+      encrypted_mek_by_password,
+      mek_pw_iv,
+      mek_pw_tag,
+      encrypted_mek_by_recovery,
+      mek_rc_iv,
+      mek_rc_tag
+    } = req.body
 
     const existingUser = await User.findOne({ where: { email } })
     if (existingUser) {
@@ -46,38 +57,19 @@ exports.register = async (req, res) => {
       })
     }
 
-    const breachCount = await checkPasswordBreach(master_password)
-    if (breachCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Password ini ditemukan ${breachCount} kali dalam kebocoran data publik. Gunakan password yang lebih aman.`
-      })
-    }
-
     const saltRounds = 12
-    const passwordHash = await bcrypt.hash(master_password, saltRounds)
-
-    const mek = generateMEK()
-
-    const kekSalt = generateSalt()
-    const kek = await deriveKEK(master_password, kekSalt)
-
-    const mekByPassword = wrapMEK(mek, kek)
-
-    const recoveryKey = generateRecoveryKey()
-
-    const mekByRecovery = wrapMEK(mek, recoveryKey.raw)
+    const passwordHash = await bcrypt.hash(master_hash, saltRounds)
 
     const user = await User.create({
       email,
       master_hash: passwordHash,
-      kek_salt: kekSalt,
-      encrypted_mek_by_password: mekByPassword.encrypted,
-      mek_pw_iv: mekByPassword.iv,
-      mek_pw_tag: mekByPassword.tag,
-      encrypted_mek_by_recovery: mekByRecovery.encrypted,
-      mek_rc_iv: mekByRecovery.iv,
-      mek_rc_tag: mekByRecovery.tag,
+      kek_salt,
+      encrypted_mek_by_password: Buffer.from(encrypted_mek_by_password, 'hex'),
+      mek_pw_iv: Buffer.from(mek_pw_iv, 'hex'),
+      mek_pw_tag: Buffer.from(mek_pw_tag, 'hex'),
+      encrypted_mek_by_recovery: Buffer.from(encrypted_mek_by_recovery, 'hex'),
+      mek_rc_iv: Buffer.from(mek_rc_iv, 'hex'),
+      mek_rc_tag: Buffer.from(mek_rc_tag, 'hex'),
       mek_version: 1,
       is_verified: false
     })
@@ -109,12 +101,8 @@ exports.register = async (req, res) => {
       data: {
         id: user.id,
         email: user.email,
-        createdAt: user.createdAt,
-        recovery_key: recoveryKey.formatted
-      },
-      security_notice:
-        'IMPORTANT: Save your recovery key now. It will NOT be shown again. ' +
-        'If you lose both your password and recovery key, your data cannot be recovered.'
+        createdAt: user.createdAt
+      }
     })
   } catch (error) {
     console.error('Register error:', error)
@@ -127,15 +115,15 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, master_password } = req.body
+    const { email, master_hash } = req.body
     const ipLocation = await Detection.getClientIP(req)
     const loginTime = new Date()
     const getLocation = await Detection.getLocation(ipLocation)
 
-    if (!email || !master_password) {
+    if (!email || !master_hash) {
       return res.status(401).json({
         success: false,
-        message: 'Email and password are required'
+        message: 'Email and master_hash are required'
       })
     }
 
@@ -173,7 +161,7 @@ exports.login = async (req, res) => {
       console.error('VPN check error:', err.message)
     }
 
-    const isValid = await bcrypt.compare(master_password, user.master_hash)
+    const isValid = await bcrypt.compare(master_hash, user.master_hash)
     if (!isValid) {
       await db.LoginHistory.create({
         user_id: user.id,
@@ -253,18 +241,6 @@ exports.login = async (req, res) => {
         )
       })
 
-    let mekHex = null
-    if (user.mek_version >= 1 && user.encrypted_mek_by_password) {
-      const kek = await deriveKEK(master_password, user.kek_salt)
-      const mek = unwrapMEK(
-        user.encrypted_mek_by_password,
-        kek,
-        user.mek_pw_iv,
-        user.mek_pw_tag
-      )
-      mekHex = mek.toString('hex')
-    }
-
     return res.json({
       success: true,
       message: 'Login successful',
@@ -274,7 +250,12 @@ exports.login = async (req, res) => {
           email: user.email,
           mek_version: user.mek_version
         },
-        mek: mekHex
+        mek_data: {
+          kek_salt: user.kek_salt,
+          encrypted_mek_by_password: user.encrypted_mek_by_password ? user.encrypted_mek_by_password.toString('hex') : null,
+          mek_pw_iv: user.mek_pw_iv ? user.mek_pw_iv.toString('hex') : null,
+          mek_pw_tag: user.mek_pw_tag ? user.mek_pw_tag.toString('hex') : null
+        }
       }
     })
   } catch (err) {
@@ -350,7 +331,7 @@ exports.logout = async (req, res) => {
 
 exports.verifyRecoveryKey = async (req, res) => {
   try {
-    const { email, recovery_key } = req.body
+    const { email } = req.body
 
     const user = await User.findOne({ where: { email } })
     if (!user || user.mek_version < 1 || !user.encrypted_mek_by_recovery) {
@@ -360,71 +341,48 @@ exports.verifyRecoveryKey = async (req, res) => {
       })
     }
 
-    const recoveryKeyBuffer = parseRecoveryKey(recovery_key)
-    const mek = unwrapMEK(
-      user.encrypted_mek_by_recovery,
-      recoveryKeyBuffer,
-      user.mek_rc_iv,
-      user.mek_rc_tag
-    )
-
-    req.session.recovery_mek = mek.toString('hex')
-    req.session.recovery_user_id = user.id
-
     return res.json({
       success: true,
-      message: 'Recovery key verified successfully. Proceed to reset password.'
+      data: {
+        encrypted_mek_by_recovery: user.encrypted_mek_by_recovery.toString('hex'),
+        mek_rc_iv: user.mek_rc_iv.toString('hex'),
+        mek_rc_tag: user.mek_rc_tag.toString('hex')
+      }
     })
   } catch (error) {
     console.error('Verify Recovery error:', error)
-    return res.status(400).json({
+    return res.status(500).json({
       success: false,
-      message: 'Invalid recovery key or email'
+      message: 'Internal server error'
     })
   }
 }
 
 exports.resetPassword = async (req, res) => {
   try {
-    const { new_password } = req.body
-    const { recovery_mek, recovery_user_id } = req.session
+    const { 
+      email,
+      new_master_hash, 
+      new_kek_salt, 
+      encrypted_mek_by_password, 
+      mek_pw_iv, 
+      mek_pw_tag 
+    } = req.body
 
-    if (!recovery_mek || !recovery_user_id) {
-      return res.status(400).json({
-        success: false,
-        message:
-          'Recovery session expired. Please verify your recovery key again.'
-      })
-    }
-
-    const user = await User.findByPk(recovery_user_id)
+    const user = await User.findOne({ where: { email } })
     if (!user) throw new Error('User not found')
 
-    const breachCount = await checkPasswordBreach(new_password)
-    if (breachCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password found in data breaches. Please choose another.'
-      })
-    }
-
-    const mek = Buffer.from(recovery_mek, 'hex')
-    const passwordHash = await bcrypt.hash(new_password, 12)
-    const kekSalt = generateSalt()
-    const kek = await deriveKEK(new_password, kekSalt)
-    const mekByPassword = wrapMEK(mek, kek)
+    const passwordHash = await bcrypt.hash(new_master_hash, 12)
 
     await user.update({
       master_hash: passwordHash,
-      kek_salt: kekSalt,
-      encrypted_mek_by_password: mekByPassword.encrypted,
-      mek_pw_iv: mekByPassword.iv,
-      mek_pw_tag: mekByPassword.tag,
+      kek_salt: new_kek_salt,
+      encrypted_mek_by_password: Buffer.from(encrypted_mek_by_password, 'hex'),
+      mek_pw_iv: Buffer.from(mek_pw_iv, 'hex'),
+      mek_pw_tag: Buffer.from(mek_pw_tag, 'hex'),
       is_blocked: false,
       recovered_at: new Date()
     })
-
-    req.session.destroy()
 
     return res.json({
       success: true,
@@ -439,171 +397,7 @@ exports.resetPassword = async (req, res) => {
   }
 }
 
-exports.migrateToMEK = async (req, res) => {
-  const t = await db.sequelize.transaction()
-  try {
-    const userId = req.user.userId
-    const { master_password } = req.body
-
-    const user = await User.findOne({
-      where: { id: userId },
-      transaction: t
-    })
-
-    if (!user) {
-      await t.rollback()
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      })
-    }
-
-    if (user.mek_version >= 1) {
-      await t.rollback()
-      return res.status(400).json({
-        success: false,
-        message: 'Account already migrated to MEK system'
-      })
-    }
-
-    const isValid = await bcrypt.compare(master_password, user.master_hash)
-    if (!isValid) {
-      await t.rollback()
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid master password'
-      })
-    }
-
-    const mek = generateMEK()
-
-    const kekSalt = generateSalt()
-    const kek = await deriveKEK(master_password, kekSalt)
-    const mekByPassword = wrapMEK(mek, kek)
-
-    const recoveryKey = generateRecoveryKey()
-    const mekByRecovery = wrapMEK(mek, recoveryKey.raw)
-
-    const vaultPasswords = await db.VaultPassword.findAll({
-      where: { user_id: userId },
-      transaction: t
-    })
-
-    for (const vp of vaultPasswords) {
-      try {
-        const encryptedObj = JSON.parse(vp.password_encrypted)
-        const kdfParams = vp.kdf_params || {
-          memoryCost: 2 ** 16,
-          timeCost: 3,
-          parallelism: 1
-        }
-        const plaintext = await decrypt(
-          encryptedObj,
-          master_password,
-          kdfParams
-        )
-
-        const newEncrypted = encryptData(plaintext, mek)
-
-        await db.sequelize.query(
-          `UPDATE vault_passwords
-           SET password_encrypted = :password_encrypted, updated_at = CURRENT_TIMESTAMP
-           WHERE id = :id AND user_id = :userId`,
-          {
-            replacements: {
-              password_encrypted: JSON.stringify(newEncrypted),
-              id: vp.id,
-              userId
-            },
-            type: db.sequelize.QueryTypes.UPDATE,
-            transaction: t
-          }
-        )
-      } catch (err) {
-        console.error(
-          `⚠️ Failed to migrate vault password ${vp.id}:`,
-          err.message
-        )
-      }
-    }
-
-    const secretNotes = await db.SecretNote.findAll({
-      where: { user_id: userId, deleted_at: null },
-      transaction: t
-    })
-
-    for (const sn of secretNotes) {
-      try {
-        const encryptedObj = JSON.parse(sn.note)
-        const kdfParams = sn.kdf_params || {
-          memoryCost: 2 ** 16,
-          timeCost: 3,
-          parallelism: 1
-        }
-        const plaintext = await decrypt(
-          encryptedObj,
-          master_password,
-          kdfParams
-        )
-
-        const newEncrypted = encryptData(plaintext, mek)
-
-        await db.sequelize.query(
-          `UPDATE secret_notes
-           SET note = :note, updated_at = CURRENT_TIMESTAMP
-           WHERE id = :id AND user_id = :userId AND deleted_at IS NULL`,
-          {
-            replacements: {
-              note: JSON.stringify(newEncrypted),
-              id: sn.id,
-              userId
-            },
-            type: db.sequelize.QueryTypes.UPDATE,
-            transaction: t
-          }
-        )
-      } catch (err) {
-        console.error(`⚠️ Failed to migrate secret note ${sn.id}:`, err.message)
-      }
-    }
-
-    await user.update(
-      {
-        kek_salt: kekSalt,
-        encrypted_mek_by_password: mekByPassword.encrypted,
-        mek_pw_iv: mekByPassword.iv,
-        mek_pw_tag: mekByPassword.tag,
-        encrypted_mek_by_recovery: mekByRecovery.encrypted,
-        mek_rc_iv: mekByRecovery.iv,
-        mek_rc_tag: mekByRecovery.tag,
-        mek_version: 1
-      },
-      { transaction: t }
-    )
-
-    await t.commit()
-
-    return res.json({
-      success: true,
-      message: 'Account migrated to MEK system successfully',
-      data: {
-        recovery_key: recoveryKey.formatted,
-        migrated_vault_passwords: vaultPasswords.length,
-        migrated_secret_notes: secretNotes.length
-      },
-      security_notice:
-        'IMPORTANT: Save your recovery key now. It will NOT be shown again. ' +
-        'If you lose both your password and recovery key, your data cannot be recovered.'
-    })
-  } catch (error) {
-    await t.rollback()
-    console.error('Migration error:', error)
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Migration failed'
-    })
-  }
-}
+// migrateToMEK removed as migration must be handled purely on frontend
 
 exports.verifyEmail = async (req, res) => {
   try {
