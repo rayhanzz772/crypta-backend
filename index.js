@@ -19,28 +19,52 @@ const allowedOrigins = [
   'http://127.0.0.1:3000',
   'http://127.0.0.1:5173',
 
-    // ✅ production
+  // ✅ production
   'https://crypta.rayhancreative.web.id',
   'https://www.crypta.rayhancreative.web.id',
   'https://crypta-frontend.vercel.app'
 ]
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true)
-      if (allowedOrigins.indexOf(origin) === -1) {
-        var msg =
-          'The CORS policy for this site does not ' +
-          'allow access from the specified Origin.'
-        return callback(new Error(msg), false)
-      }
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow same-origin requests and non-browser clients.
+    if (!origin) return callback(null, true)
+
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true)
-    },
-    credentials: true
-  })
+    }
+
+    try {
+      const originUrl = new URL(origin)
+      const hostname = originUrl.hostname
+
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.rayhancreative.web.id')
+      ) {
+        return callback(null, true)
+      }
+    } catch (error) {
+      // Fall through to the rejection below.
+    }
+
+    return callback(
+      new Error(
+        'The CORS policy for this site does not allow access from the specified Origin.'
+      ),
+      false
+    )
+  },
+  credentials: true,
+  optionsSuccessStatus: 204
+}
+
+app.use(
+  cors(corsOptions)
 )
+
+app.options('*', cors(corsOptions))
 
 app.use(express.json())
 app.use(cookieParser())
