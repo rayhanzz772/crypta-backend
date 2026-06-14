@@ -269,10 +269,19 @@ exports.login = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
-    const { email } = req.user
+    const userId = req.user?.userId
+    const email = req.user?.email
+
+    if (!userId && !email) {
+      return res.status(HttpStatusCode.Unauthorized).json(
+        api(null, HttpStatusCode.Unauthorized, {
+          err: new Error('Authentication required')
+        })
+      )
+    }
 
     const user = await db.User.findOne({
-      where: { email },
+      where: userId ? { id: userId } : { email },
       attributes: [
         'id',
         'email',

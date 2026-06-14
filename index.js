@@ -64,7 +64,7 @@ app.use(
   cors(corsOptions)
 )
 
-app.options('*', cors(corsOptions))
+app.options(/.*/, cors(corsOptions))
 
 app.use(express.json())
 app.use(cookieParser())
