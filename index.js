@@ -20,8 +20,9 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
 
     // ✅ production
-  'https://crypta.rayhanprojects.site',
-  'https://www.crypta.rayhanprojects.site'
+  'https://crypta.rayhancreative.web.id',
+  'https://www.crypta.rayhancreative.web.id',
+  'https://crypta-frontend.vercel.app'
 ]
 
 app.use(
