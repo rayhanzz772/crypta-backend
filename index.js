@@ -27,7 +27,7 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow same-origin requests and non-browser clients.
+    console.log('CORS Origin:', origin)
     if (!origin) return callback(null, true)
 
     if (allowedOrigins.includes(origin)) {
