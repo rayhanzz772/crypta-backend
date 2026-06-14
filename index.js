@@ -8,6 +8,7 @@ require('dotenv').config()
 const privateRoute = require('./src/routes/private-routes.js')
 const clientRoutes = require('./src/routes/client-route.js')
 const authRoutes = require('./src/modules/auth')
+const { checkMlServiceReady } = require('./src/services/apiPredict')
 
 const app = express()
 
@@ -76,6 +77,7 @@ const server = http.createServer(app)
 
 server.listen(port, () => {
   console.log(`⚡ Server running on PORT: ${port}`)
+  checkMlServiceReady()
 })
 
 module.exports = app
