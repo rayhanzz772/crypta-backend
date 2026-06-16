@@ -37,7 +37,7 @@ const publicLimiter = rateLimit({
  */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window per IP
+  max: 25, // 5 attempts per window per IP
   standardHeaders: true,
   legacyHeaders: false,
   validate: false, // disable IPv6 keyGenerator validation warning
