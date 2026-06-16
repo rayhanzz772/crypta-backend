@@ -1,6 +1,7 @@
 require('dotenv').config()
 const jwt = require('jsonwebtoken')
 const db = require('../../db/models')
+const { isTokenBlacklisted } = require('../utils/tokenBlacklist')
 
 const authMiddleware = async (req, res, next) => {
   // Read token from httpOnly cookie first, then fall back to Authorization header
@@ -21,7 +22,16 @@ const authMiddleware = async (req, res, next) => {
   }
   try {
     // Verifikasi token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+
+    // Check if token has been revoked (logged out)
+    if (isTokenBlacklisted(token)) {
+      return res.status(401).json({
+        success: false,
+        errorCode: 'TOKEN_REVOKED',
+        message: 'Token has been revoked. Please log in again.'
+      })
+    }
 
     const user = await db.User.findByPk(decoded.userId)
     if (!user || user.is_blocked) {

@@ -9,11 +9,13 @@ async function createSecret(req, res) {
   const { name, labels = [] } = req.body
   const userId = req.user.userId
 
-  const project = await Project.findByPk(project_id)
+  const project = await Project.findOne({
+    where: { id: project_id, owner_id: userId }
+  })
   if (!project) {
     return res
-      .status(404)
-      .json({ success: false, message: 'Project not found' })
+      .status(403)
+      .json({ success: false, message: 'Project not found or access denied' })
   }
 
   const exists = await Secret.findOne({
@@ -62,8 +64,19 @@ async function createSecret(req, res) {
 }
 
 async function listSecrets(req, res) {
-  const { Secret } = req.models
+  const { Project, Secret } = req.models
   const { project_id } = req.params
+  const userId = req.user.userId
+
+  // Verify project ownership before listing secrets
+  const project = await Project.findOne({
+    where: { id: project_id, owner_id: userId }
+  })
+  if (!project) {
+    return res
+      .status(403)
+      .json({ success: false, message: 'Project not found or access denied' })
+  }
 
   // Get pagination parameters from query string
   const page = parseInt(req.query.page) || 1
@@ -101,8 +114,9 @@ async function listSecrets(req, res) {
 }
 
 async function getSecret(req, res) {
-  const { Secret } = req.models
+  const { Secret, Project } = req.models
   const { secret_id } = req.params
+  const userId = req.user.userId
 
   const secret = await Secret.findByPk(secret_id, {
     attributes: ['id', 'project_id', 'name', 'labels', 'status', 'created_at']
@@ -110,6 +124,14 @@ async function getSecret(req, res) {
 
   if (!secret) {
     return res.status(404).json({ success: false, message: 'Not found' })
+  }
+
+  // Verify the secret belongs to a project owned by the requesting user
+  const project = await Project.findOne({
+    where: { id: secret.project_id, owner_id: userId }
+  })
+  if (!project) {
+    return res.status(403).json({ success: false, message: 'Access denied' })
   }
 
   const secretData = secret.toJSON()
@@ -127,12 +149,21 @@ async function getSecret(req, res) {
 }
 
 async function deleteSecret(req, res) {
-  const { Secret, SecretVersion } = req.models
+  const { Secret, SecretVersion, Project } = req.models
   const { secret_id } = req.params
+  const userId = req.user.userId
 
   const secret = await Secret.findByPk(secret_id)
   if (!secret) {
     return res.status(404).json({ success: false, message: 'Not found' })
+  }
+
+  // Verify the secret belongs to a project owned by the requesting user
+  const project = await Project.findOne({
+    where: { id: secret.project_id, owner_id: userId }
+  })
+  if (!project) {
+    return res.status(403).json({ success: false, message: 'Access denied' })
   }
 
   await SecretVersion.update(

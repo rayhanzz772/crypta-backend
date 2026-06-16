@@ -15,6 +15,7 @@ const { predictAnomaly } = require('../../services/apiPredict')
 const { sendMail } = require('../../utils/mailer')
 const { verificationEmailTemplate } = require('../../utils/emailTemplates')
 const { handleRiskTrigger } = require('../../services/triggerRisk')
+const { blacklistToken } = require('../../utils/tokenBlacklist')
 const HttpStatusCode = require('axios').HttpStatusCode
 const { api } = require('../../utils/api')
 
@@ -55,6 +56,17 @@ exports.register = async (req, res) => {
         success: false,
         message: 'Email already registered'
       })
+    }
+
+    // Check if master_hash has been breached (non-blocking — best-effort security)
+    let breachWarning = false
+    try {
+      const breachCount = await checkPasswordBreach(master_hash)
+      if (breachCount > 0) {
+        breachWarning = true
+      }
+    } catch (breachErr) {
+      console.warn('[HIBP] Breach check failed (non-blocking):', breachErr.message)
     }
 
     const saltRounds = 12
@@ -102,7 +114,10 @@ exports.register = async (req, res) => {
         id: user.id,
         email: user.email,
         createdAt: user.createdAt
-      }
+      },
+      warnings: breachWarning
+        ? ['This password hash has been seen in known data breaches. Consider using a stronger master password.']
+        : []
     })
   } catch (error) {
     console.error('Register error:', error)
@@ -152,6 +167,27 @@ exports.login = async (req, res) => {
       })
     }
 
+    // Brute force protection: check recent failed attempts (last 15 minutes)
+    const MAX_FAILED_ATTEMPTS = 5
+    const LOCKOUT_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+    const recentFailed = await db.LoginHistory.count({
+      where: {
+        user_id: user.id,
+        status: 'failed',
+        login_time: {
+          [db.Sequelize.Op.gte]: new Date(Date.now() - LOCKOUT_WINDOW_MS)
+        }
+      }
+    })
+
+    if (recentFailed >= MAX_FAILED_ATTEMPTS) {
+      return res.status(429).json({
+        success: false,
+        errorCode: 'BRUTE_FORCE_LOCKOUT',
+        message: `Too many failed login attempts (${recentFailed}/${MAX_FAILED_ATTEMPTS}). Account temporarily locked. Please try again after 15 minutes or use your recovery key.`
+      })
+    }
+
     let isVpn = false
     try {
       if (req.ip && req.ip !== '::1' && req.ip !== '127.0.0.1') {
@@ -194,7 +230,7 @@ exports.login = async (req, res) => {
       email: user.email,
       sessionId: loginHistory.id
     }
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' })
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' })
 
     const isProduction = process.env.NODE_ENV === 'production'
     res.cookie('token', token, {
@@ -315,7 +351,13 @@ exports.logout = async (req, res) => {
 
     if (tokenStr) {
       try {
-        const decoded = jwt.verify(tokenStr, process.env.JWT_SECRET)
+        const decoded = jwt.verify(tokenStr, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+
+        // Blacklist the token so it can't be used again
+        if (decoded.exp) {
+          blacklistToken(tokenStr, decoded.exp * 1000)
+        }
+
         if (decoded.sessionId) {
           await db.LoginHistory.update(
             { last_active_at: new Date() },

@@ -537,7 +537,25 @@ class Controller {
 
 	static async downloadSecretFile(req, res) {
 			try {
+				const userId = req.user.userId
 				const { bucket, object_name, mek } = req.body
+
+				// Verify the file record belongs to the requesting user
+				const fileRecord = await File.findOne({
+					where: {
+						user_id: userId,
+						bucket,
+						object_name,
+						deleted_at: null
+					}
+				})
+
+				if (!fileRecord) {
+					return res.status(NOT_FOUND).json({
+						success: false,
+						message: 'File not found or access denied'
+					})
+				}
 
 				const file = await getEncryptedFile({
 					bucketName: bucket,

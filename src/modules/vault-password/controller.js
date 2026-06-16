@@ -293,6 +293,31 @@ class Controller {
       const userId = req.user.userId
       const { target_id, type } = req.body
 
+      // Verify that the target resource belongs to the requesting user
+      if (type === 'password') {
+        const target = await db.VaultPassword.findOne({
+          where: { id: target_id, user_id: userId }
+        })
+        if (!target) {
+          await t.rollback()
+          return res.status(NOT_FOUND).json({
+            success: false,
+            message: 'Target password not found or does not belong to you'
+          })
+        }
+      } else if (type === 'note') {
+        const target = await db.SecretNote.findOne({
+          where: { id: target_id, user_id: userId, deleted_at: null }
+        })
+        if (!target) {
+          await t.rollback()
+          return res.status(NOT_FOUND).json({
+            success: false,
+            message: 'Target note not found or does not belong to you'
+          })
+        }
+      }
+
       const existing = await db.Favorite.findOne({
         where: { user_id: userId, target_id, type }
       })

@@ -4,15 +4,27 @@ const HttpStatusCode = require('axios')
 const HTTP_OK = HttpStatusCode?.Ok || 200
 
 async function createBinding(req, res) {
-  const { IamBinding, ServiceAccount, Secret } = req.models
+  const { IamBinding, ServiceAccount, Secret, Project } = req.models
   const { secret_id } = req.params
   const { service_account_id } = req.body
+  const userId = req.user.userId
 
   const secret = await Secret.findByPk(secret_id)
   if (!secret || secret.status !== 'active') {
     return res.status(404).json({
       success: false,
       message: 'Secret not found or disabled'
+    })
+  }
+
+  // Verify the secret belongs to a project owned by the requesting user
+  const project = await Project.findOne({
+    where: { id: secret.project_id, owner_id: userId }
+  })
+  if (!project) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: you do not own the project containing this secret'
     })
   }
 
