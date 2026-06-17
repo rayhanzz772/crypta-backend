@@ -9,60 +9,23 @@ const HTTP_OK = HttpStatusCode.Ok
 class Controller {
   static async getUser(req, res) {
     try {
-      const limit = req.query.per_page || 10
-      const page = req.query.page || 1
-      const offset = (page - 1) * limit
-      const q = req.query.q || null
+      // Restrict to self-lookup only — prevent user enumeration
+      const userId = req.user.userId
 
-      const conditions = ['u.deleted_at IS NULL']
-      const replacements = { limit, offset }
+      const user = await db.User.findOne({
+        where: { id: userId, deleted_at: null },
+        attributes: ['id', 'username', 'email', 'created_at', 'last_login_at']
+      })
 
-      if (q) {
-        conditions.push(`
-        (
-          LOWER(u.username) LIKE LOWER(:search)
+      if (!user) {
+        return res.status(HttpStatusCode.NotFound).json(
+          api(null, HttpStatusCode.NotFound, { message: 'User not found' })
         )
-      `)
-        replacements.search = `%${q.toLowerCase()}%`
       }
 
-      const whereClause = conditions.length
-        ? `WHERE ${conditions.join(' AND ')}`
-        : ''
-
-      const results = await db.sequelize.query(
-        `
-        SELECT
-          u.id,
-          u.username,
-          u.email
-        FROM users u
-        ${whereClause}
-        ORDER BY u.id DESC
-        LIMIT :limit OFFSET :offset
-      `,
-        {
-          type: db.Sequelize.QueryTypes.SELECT,
-          replacements
-        }
-      )
-
-      const countResult = await db.sequelize.query(
-        `
-        SELECT
-          COUNT(*) AS total
-        FROM users u
-        ${whereClause}
-      `,
-        {
-          type: db.Sequelize.QueryTypes.SELECT,
-          replacements
-        }
-      )
-
       const result = {
-        count: parseInt(countResult[0].total, 10),
-        rows: results
+        count: 1,
+        rows: [user]
       }
 
       return res.status(HTTP_OK).json(api(result))

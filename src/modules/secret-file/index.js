@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const multer = require('multer')
+const path = require('path')
 
 const Controller = require('./controller')
 const validateRequest = require('../../middleware/validateRequest')
@@ -14,10 +15,86 @@ const {
 	folderIdParamSchema
 } = require('./schema')
 
+/**
+ * Whitelist of allowed MIME types for upload.
+ * Prevents execution of server-side code (e.g., .php, .js, .exe).
+ */
+const ALLOWED_MIME_TYPES = new Set([
+	// Images
+	'image/jpeg',
+	'image/png',
+	'image/gif',
+	'image/webp',
+	'image/svg+xml',
+	'image/bmp',
+	'image/tiff',
+	'image/avif',
+
+	// Documents
+	'application/pdf',
+	'application/msword',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	'application/vnd.ms-excel',
+	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+	'application/vnd.ms-powerpoint',
+	'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+
+	// Archives
+	'application/zip',
+	'application/x-rar-compressed',
+	'application/x-7z-compressed',
+	'application/x-tar',
+	'application/gzip',
+
+	// Text / Config
+	'text/plain',
+	'text/csv',
+	'application/json',
+	'application/xml',
+	'application/x-yaml',
+	'text/yaml',
+
+	// Certificates / Keys
+	'application/x-pem-file',
+	'application/x-x509-ca-cert',
+
+	// Generic binary
+	'application/octet-stream'
+])
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20 MB
+
 const upload = multer({
 	storage: multer.memoryStorage(),
 	limits: {
-		fileSize: 20 * 1024 * 1024 // 20 MB
+		fileSize: MAX_FILE_SIZE,
+		files: 1 // only allow single file upload
+	},
+	fileFilter: (req, file, cb) => {
+		// Check MIME type
+		if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+			return cb(
+				new Error(`File type "${file.mimetype}" is not allowed. Allowed types: images, documents, archives, text, certificates.`),
+				false
+			)
+		}
+
+		// Check dangerous extensions that could bypass MIME checks
+		const ext = path.extname(file.originalname || '').toLowerCase()
+		const BLOCKED_EXTENSIONS = new Set([
+			'.exe', '.bat', '.cmd', '.com', '.cpl', '.scr', '.pif', '.msi',
+			'.php', '.phtml', '.asp', '.aspx', '.jsp', '.cgi', '.pl',
+			'.js', '.mjs', '.cjs', '.ts', '.sh', '.bash', '.ps1',
+			'.dll', '.so', '.dylib', '.vbs', '.wsf', '.hta'
+		])
+		if (BLOCKED_EXTENSIONS.has(ext)) {
+			return cb(
+				new Error(`File extension "${ext}" is not allowed for security reasons.`),
+				false
+			)
+		}
+
+		cb(null, true)
 	}
 })
 

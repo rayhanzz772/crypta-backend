@@ -324,6 +324,18 @@ class Controller {
 
       const type = 'note'
 
+      // Verify ownership: the note must belong to the requesting user
+      const targetNote = await SecretNote.findOne({
+        where: { id: target_id, user_id: userId, deleted_at: null }
+      })
+      if (!targetNote) {
+        await t.rollback()
+        return res.status(NOT_FOUND).json({
+          success: false,
+          message: 'Secret note not found or does not belong to you'
+        })
+      }
+
       const existing = await db.Favorite.findOne({
         where: { user_id: userId, target_id, type }
       })

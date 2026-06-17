@@ -2,6 +2,7 @@ const Controller = require('./controller')
 const router = require('express').Router()
 const { authMiddleware } = require('../../middleware/authMiddleware')
 const validateRequest = require('../../middleware/validateRequest')
+const { loginLimiter, recoveryLimiter } = require('../../middleware/rateLimiter')
 const {
   loginSchema,
   registerSchema,
@@ -16,6 +17,7 @@ router.post('/login', validateRequest({ body: loginSchema }), Controller.login)
 router.post('/logout', Controller.logout)
 router.post(
   '/register',
+  loginLimiter,
   validateRequest({ body: registerSchema }),
   Controller.register
 )
@@ -24,23 +26,27 @@ router.get('/me', authMiddleware, Controller.getMe)
 
 router.post(
   '/verify-recovery-key',
+  recoveryLimiter,
   validateRequest({ body: verifyRecoverySchema }),
   Controller.verifyRecoveryKey
 )
 router.post(
   '/reset-password',
+  recoveryLimiter,
   validateRequest({ body: resetPasswordSchema }),
   Controller.resetPassword
 )
 
 router.post(
   '/verify-email',
+  loginLimiter,
   validateRequest({ body: verifyEmailSchema }),
   Controller.verifyEmail
 )
 
 router.post(
   '/resend-verification',
+  loginLimiter,
   validateRequest({ body: resendVerificationSchema }),
   Controller.resendVerification
 )

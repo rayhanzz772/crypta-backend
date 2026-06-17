@@ -9,6 +9,7 @@ const privateRoute = require('./src/routes/private-routes.js')
 const clientRoutes = require('./src/routes/client-route.js')
 const authRoutes = require('./src/modules/auth')
 const { checkMlServiceReady } = require('./src/services/apiPredict')
+const csrfProtection = require('./src/utils/csrf')
 
 const app = express()
 
@@ -86,8 +87,8 @@ app.use(
 )
 app.use('/public', express.static('public'))
 app.use('/auth', authRoutes)
-app.use('/api', privateRoute)
-app.use('/client', clientRoutes)
+app.use('/api', csrfProtection, privateRoute)
+app.use('/client', csrfProtection, clientRoutes)
 
 app.use((req, res) => {
   res.status(404).json({

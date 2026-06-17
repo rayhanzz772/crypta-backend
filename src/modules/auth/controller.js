@@ -15,6 +15,7 @@ const { predictAnomaly } = require('../../services/apiPredict')
 const { sendMail } = require('../../utils/mailer')
 const { verificationEmailTemplate } = require('../../utils/emailTemplates')
 const { handleRiskTrigger } = require('../../services/triggerRisk')
+const { blacklistToken } = require('../../utils/tokenBlacklist')
 const HttpStatusCode = require('axios').HttpStatusCode
 const { api } = require('../../utils/api')
 
@@ -55,6 +56,17 @@ exports.register = async (req, res) => {
         success: false,
         message: 'Email already registered'
       })
+    }
+
+    // Check if master_hash has been breached (non-blocking — best-effort security)
+    let breachWarning = false
+    try {
+      const breachCount = await checkPasswordBreach(master_hash)
+      if (breachCount > 0) {
+        breachWarning = true
+      }
+    } catch (breachErr) {
+      console.warn('[HIBP] Breach check failed (non-blocking):', breachErr.message)
     }
 
     const saltRounds = 12
@@ -102,7 +114,10 @@ exports.register = async (req, res) => {
         id: user.id,
         email: user.email,
         createdAt: user.createdAt
-      }
+      },
+      warnings: breachWarning
+        ? ['This password hash has been seen in known data breaches. Consider using a stronger master password.']
+        : []
     })
   } catch (error) {
     console.error('Register error:', error)
@@ -152,6 +167,27 @@ exports.login = async (req, res) => {
       })
     }
 
+    // Brute force protection: check recent failed attempts (last 15 minutes)
+    const MAX_FAILED_ATTEMPTS = 25
+    const LOCKOUT_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+    const recentFailed = await db.LoginHistory.count({
+      where: {
+        user_id: user.id,
+        status: 'failed',
+        login_time: {
+          [db.Sequelize.Op.gte]: new Date(Date.now() - LOCKOUT_WINDOW_MS)
+        }
+      }
+    })
+
+    if (recentFailed >= MAX_FAILED_ATTEMPTS) {
+      return res.status(429).json({
+        success: false,
+        errorCode: 'BRUTE_FORCE_LOCKOUT',
+        message: `Too many failed login attempts (${recentFailed}/${MAX_FAILED_ATTEMPTS}). Account temporarily locked. Please try again after 15 minutes or use your recovery key.`
+      })
+    }
+
     let isVpn = false
     try {
       if (req.ip && req.ip !== '::1' && req.ip !== '127.0.0.1') {
@@ -194,7 +230,7 @@ exports.login = async (req, res) => {
       email: user.email,
       sessionId: loginHistory.id
     }
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' })
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' })
 
     const isProduction = process.env.NODE_ENV === 'production'
     res.cookie('token', token, {
@@ -212,34 +248,85 @@ exports.login = async (req, res) => {
       last_device: req.headers['user-agent']
     })
 
-    buildFeatureVector(user.id, loginTime, req.ip, user.recovered_at)
-      .then(async (features) => {
-        const anomalyLog = await db.AnomalyLog.create({
-          id: require('cuid')(),
-          user_id: user.id,
-          ...features
-        })
+    // ── Anomaly prediction with cooldown ────────────────────────────────
+    // Skip ML prediction if user already had one within the last 30 minutes.
+    // LoginHistory is still recorded (for brute force tracking), but the
+    // expensive feature-extraction → ML → risk-trigger pipeline is skipped.
+    const PREDICTION_COOLDOWN_MS = 1 * 60 * 1000 // 30 minutes
+    const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 hours
+    const RISK_SEVERITY = { low: 0, medium: 1, high: 2 }
 
-        try {
-          const mlResponse = await predictAnomaly(features)
-          console.log(mlResponse)
-          await anomalyLog.update({
-            anomaly_score: mlResponse.score,
-            risk_level: mlResponse.risk_level,
-            prediction: mlResponse.status
+    const lastPrediction = await db.AnomalyLog.findOne({
+      where: { user_id: user.id },
+      order: [['created_at', 'DESC']],
+      attributes: ['created_at']
+    })
+
+    const isWithinCooldown = lastPrediction &&
+      (loginTime - new Date(lastPrediction.created_at)) < PREDICTION_COOLDOWN_MS
+
+    if (!isWithinCooldown) {
+      buildFeatureVector(user.id, loginTime, req.ip, user.recovered_at)
+        .then(async (features) => {
+          const anomalyLog = await db.AnomalyLog.create({
+            id: require('cuid')(),
+            user_id: user.id,
+            ...features
           })
 
-          await handleRiskTrigger(mlResponse.risk_level, loginHistory.id, user)
-        } catch (mlErr) {
-          console.error('ML API Error:', mlErr.message)
-        }
-      })
-      .catch((err) => {
-        console.error(
-          'Failed to extract and save anomaly features:',
-          err.message
-        )
-      })
+          try {
+            const mlResponse = await predictAnomaly(features)
+            console.log('[ML]', mlResponse)
+            await anomalyLog.update({
+              anomaly_score: mlResponse.score,
+              risk_level: mlResponse.risk_level,
+              prediction: mlResponse.status
+            })
+
+            // Alert cooldown: don't re-trigger MEDIUM/HIGH alerts for the
+            // same user within 24 hours unless risk escalates.
+            const currentRisk = String(mlResponse.risk_level).toLowerCase()
+            const currentSeverity = RISK_SEVERITY[currentRisk] ?? 0
+
+            const lastAlert = await db.AnomalyLog.findOne({
+              where: {
+                user_id: user.id,
+                risk_level: ['MEDIUM', 'HIGH']
+              },
+              order: [['created_at', 'DESC']],
+              attributes: ['risk_level', 'created_at']
+            })
+
+            const shouldTrigger = (() => {
+              if (currentSeverity < 1) return false // LOW/unknown: never send alert
+              if (!lastAlert) return true // First alert ever
+
+              const lastAlertTime = new Date(lastAlert.created_at)
+              const isWithinAlertCooldown = (loginTime - lastAlertTime) < ALERT_COOLDOWN_MS
+              const lastSeverity = RISK_SEVERITY[String(lastAlert.risk_level).toLowerCase()] ?? 0
+
+              if (!isWithinAlertCooldown) return true // Cooldown expired
+              return currentSeverity > lastSeverity // Only if risk escalated
+            })()
+
+            if (shouldTrigger) {
+              await handleRiskTrigger(mlResponse.risk_level, loginHistory.id, user)
+            } else {
+              console.log(`[ML] Alert suppressed — ${currentRisk} alert already sent within 24h`)
+            }
+          } catch (mlErr) {
+            console.error('ML API Error:', mlErr.message)
+          }
+        })
+        .catch((err) => {
+          console.error(
+            'Failed to extract and save anomaly features:',
+            err.message
+          )
+        })
+    } else {
+      console.log(`[ML] Prediction skipped — cooldown active (last prediction ${Math.round((loginTime - new Date(lastPrediction.created_at)) / 60000)} min ago)`)
+    }
 
     return res.json({
       success: true,
@@ -315,7 +402,13 @@ exports.logout = async (req, res) => {
 
     if (tokenStr) {
       try {
-        const decoded = jwt.verify(tokenStr, process.env.JWT_SECRET)
+        const decoded = jwt.verify(tokenStr, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+
+        // Blacklist the token so it can't be used again
+        if (decoded.exp) {
+          blacklistToken(tokenStr, decoded.exp * 1000)
+        }
+
         if (decoded.sessionId) {
           await db.LoginHistory.update(
             { last_active_at: new Date() },
