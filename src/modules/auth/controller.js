@@ -248,10 +248,6 @@ exports.login = async (req, res) => {
       last_device: req.headers['user-agent']
     })
 
-    // ── Anomaly prediction with cooldown ────────────────────────────────
-    // Skip ML prediction if user already had one within the last 30 minutes.
-    // LoginHistory is still recorded (for brute force tracking), but the
-    // expensive feature-extraction → ML → risk-trigger pipeline is skipped.
     const PREDICTION_COOLDOWN_MS = 1 * 60 * 1000 // 30 minutes
     const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 hours
     const RISK_SEVERITY = { low: 0, medium: 1, high: 2 }
@@ -276,11 +272,12 @@ exports.login = async (req, res) => {
 
           try {
             const mlResponse = await predictAnomaly(features)
-            console.log('[ML]', mlResponse)
             await anomalyLog.update({
               anomaly_score: mlResponse.score,
               risk_level: mlResponse.risk_level,
-              prediction: mlResponse.status
+              prediction: mlResponse.status,
+              rule_score: mlResponse.rule_score,
+              ml_score: mlResponse.ml_score
             })
 
             // Alert cooldown: don't re-trigger MEDIUM/HIGH alerts for the

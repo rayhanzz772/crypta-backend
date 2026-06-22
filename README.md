@@ -424,14 +424,14 @@ This project implements a state-of-the-art hybrid AI security pipeline, acting a
 
 ### 1. Anomaly Detection (Machine Learning)
 
-When a user logs in, the system extracts features (IP Address, Geolocation, Device/User-Agent, Login Time, VPN status) and sends them to a Python-based ML Microservice. The ML model calculates an **Anomaly Score** and assigns a **Risk Level** (Low, Medium, High).
+When a user logs in, the system extracts features (IP Address, Geolocation, Device/User-Agent, Login Time, VPN status) and sends them to a Python-based ML Microservice. The ML model calculates an **Anomaly Score**, exposes separate **Rule Score** and **ML Score** values, and assigns a **Risk Level** (Low, Medium, High).
 
 ### 2. Retrieval-Augmented Generation (RAG)
 
 For Medium and High-risk logins, the system performs a RAG workflow:
 
 - **Retrieval**: Fetches the user's _Current Login Context_ (IP, Location, Time) and _Previous Login Context_ (`last_ip`, `last_location`) from the database.
-- **Augmentation**: Constructs a precise prompt injecting these real-world data points alongside the ML anomaly score.
+- **Augmentation**: Constructs a precise prompt injecting these real-world data points alongside the ML anomaly score and the rule/ML score breakdown.
 - **Generation**: Sends the prompt to a **Large Language Model (via Groq API)**. The LLM acts as an expert cybersecurity analyst to generate a concise, highly accurate risk explanation (e.g., detecting impossible travel) and actionable mitigation steps in HTML format.
 
 ### 3. Automated Mitigation
