@@ -168,7 +168,7 @@ exports.login = async (req, res) => {
     }
 
     // Brute force protection: check recent failed attempts (last 15 minutes)
-    const MAX_FAILED_ATTEMPTS = 25
+    const MAX_FAILED_ATTEMPTS = 30
     const LOCKOUT_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
     const recentFailed = await db.LoginHistory.count({
       where: {
