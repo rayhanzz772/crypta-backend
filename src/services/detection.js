@@ -58,6 +58,50 @@ function isPrivateIP(ip) {
   )
 }
 
+function getProxyCheckIpResult(responseData, ip) {
+  if (!responseData || typeof responseData !== 'object') {
+    return null
+  }
+
+  return responseData[ip] || responseData[String(ip)] || null
+}
+
+async function checkProxyCheck(ip) {
+  const apiKey = process.env.PROXYCHECK_API_KEY
+
+  if (!apiKey) {
+    return 0
+  }
+
+  const response = await axios.get(
+    `https://proxycheck.io/v3/${encodeURIComponent(ip)}?key=${encodeURIComponent(apiKey)}&ver=11-February-2026`,
+    { timeout: 5000 }
+  )
+
+  const data = response.data || {}
+  if (data.status && data.status !== 'ok' && data.status !== 'warning') {
+    return 0
+  }
+
+  const ipResult = getProxyCheckIpResult(data, ip)
+  if (!ipResult) {
+    return 0
+  }
+
+  const detections = ipResult.detections || {}
+  const anonymous = detections.anonymous === true
+  const vpn = detections.vpn === true
+  const proxy = detections.proxy === true
+  const tor = detections.tor === true
+  const riskScore = Number(ipResult.risk_score ?? ipResult.risk ?? 0)
+
+  if (anonymous || vpn || proxy || tor) {
+    return 1
+  }
+
+  return riskScore >= 50 ? 1 : 0
+}
+
 class Controller {
   static async getLoginHour(loginTime) {
     return new Date(loginTime).getHours()
@@ -153,36 +197,43 @@ class Controller {
       params.set('user_agent', userAgent)
     }
 
-    const response = await axios.get(
-      `https://ipqualityscore.com/api/json/ip/${API_KEY}/${ip}?${params.toString()}`
-    )
+    try {
+      const response = await axios.get(
+        `https://ipqualityscore.com/api/json/ip/${API_KEY}/${ip}?${params.toString()}`,
+        { timeout: 5000 }
+      )
 
-    const data = response.data || {}
-    const fraudScore = Number(data.fraud_score || 0)
-    const connectionType = String(data.connection_type || '').toLowerCase()
-    const vpnLikeSignal =
-      data.vpn ||
-      data.proxy ||
-      data.tor ||
-      data.active_vpn ||
-      data.active_tor
+      const data = response.data || {}
+      const fraudScore = Number(data.fraud_score || 0)
+      const connectionType = String(data.connection_type || '').toLowerCase()
+      const vpnLikeSignal =
+        data.vpn ||
+        data.proxy ||
+        data.tor ||
+        data.active_vpn ||
+        data.active_tor
 
-    const abuseSignal =
-      data.recent_abuse ||
-      data.frequent_abuser ||
-      data.high_risk_attacks ||
-      data.bot_status
+      const abuseSignal =
+        data.recent_abuse ||
+        data.frequent_abuser ||
+        data.high_risk_attacks ||
+        data.bot_status
 
-    const sharedOrDynamic = data.shared_connection || data.dynamic_connection
-    const datacenterConnection = connectionType === 'data center'
+      const sharedOrDynamic = data.shared_connection || data.dynamic_connection
+      const datacenterConnection = connectionType === 'data center'
 
-    if (vpnLikeSignal) return 1
-    if (fraudScore >= 90) return 1
-    if (fraudScore >= 75 && (abuseSignal || datacenterConnection || sharedOrDynamic)) {
-      return 1
+      if (vpnLikeSignal) return 1
+      if (fraudScore >= 90) return 1
+      if (fraudScore >= 75 && (abuseSignal || datacenterConnection || sharedOrDynamic)) {
+        return 1
+      }
+
+      const proxyCheckResult = await checkProxyCheck(ip)
+      return proxyCheckResult
+    } catch (error) {
+      const proxyCheckResult = await checkProxyCheck(ip)
+      return proxyCheckResult
     }
-
-    return 0
   }
 
   static async getLocation(ip) {
