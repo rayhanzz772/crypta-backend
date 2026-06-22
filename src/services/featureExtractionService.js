@@ -4,6 +4,7 @@ async function buildFeatureVector(
   userId,
   loginTime,
   userIp,
+  userAgent = null,
   recoveredAt = null
 ) {
   const login_hour = new Date(loginTime).getHours()
@@ -30,7 +31,7 @@ async function buildFeatureVector(
     recoveredAt
   )
 
-  const vpn_used = await Detection.checkVPN(userIp)
+  const vpn_used = await Detection.checkVPN(userIp, userAgent)
 
   return {
     login_hour,

@@ -137,18 +137,28 @@ class Controller {
     return String(rawIp || '').replace('::ffff:', '')
   }
 
-  static async checkVPN(ip) {
+  static async checkVPN(ip, userAgent = null) {
     if (isPrivateIP(ip)) {
       return 0
     }
 
     const API_KEY = process.env.IP_QUALITY_SCORE_API_KEY
 
+    const params = new URLSearchParams({
+      strictness: '1',
+      allow_public_access_points: 'true'
+    })
+
+    if (userAgent) {
+      params.set('user_agent', userAgent)
+    }
+
     const response = await axios.get(
-      `https://ipqualityscore.com/api/json/ip/${API_KEY}/${ip}`
+      `https://ipqualityscore.com/api/json/ip/${API_KEY}/${ip}?${params.toString()}`
     )
 
-    return response.data.vpn ? 1 : 0
+    const data = response.data || {}
+    return data.vpn || data.proxy || data.tor || data.active_vpn ? 1 : 0
   }
 
   static async getLocation(ip) {
