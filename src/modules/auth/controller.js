@@ -262,7 +262,13 @@ exports.login = async (req, res) => {
       (loginTime - new Date(lastPrediction.created_at)) < PREDICTION_COOLDOWN_MS
 
     if (!isWithinCooldown) {
-      buildFeatureVector(user.id, loginTime, clientIp, user.recovered_at)
+      buildFeatureVector(
+        user.id,
+        loginTime,
+        clientIp,
+        req.headers['user-agent'],
+        user.recovered_at
+      )
         .then(async (features) => {
           const anomalyLog = await db.AnomalyLog.create({
             id: require('cuid')(),
