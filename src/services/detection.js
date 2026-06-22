@@ -112,13 +112,17 @@ class Controller {
   }
 
   static async getSessionDuration(userId) {
-    const result = await db.LoginHistory.findOne({
-      where: { user_id: userId },
-      order: [['login_time', 'DESC']]
+    const records = await db.LoginHistory.findAll({
+      where: { user_id: userId, status: 'success' },
+      order: [['login_time', 'DESC']],
+      limit: 2
     })
-    if (!result) return 0
-    const end = result.logout_time || result.last_active_at || new Date()
-    const diff = new Date(end) - new Date(result.login_time)
+
+    if (records.length < 2) return 0
+
+    const prev = records[1] // sesi sebelumnya
+    const end = prev.logout_time || prev.last_active_at || new Date()
+    const diff = new Date(end) - new Date(prev.login_time)
     return Math.max(0, Math.floor(diff / 60000))
   }
 
