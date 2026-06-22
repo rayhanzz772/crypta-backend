@@ -158,7 +158,31 @@ class Controller {
     )
 
     const data = response.data || {}
-    return data.vpn || data.proxy || data.tor || data.active_vpn ? 1 : 0
+    const fraudScore = Number(data.fraud_score || 0)
+    const connectionType = String(data.connection_type || '').toLowerCase()
+    const vpnLikeSignal =
+      data.vpn ||
+      data.proxy ||
+      data.tor ||
+      data.active_vpn ||
+      data.active_tor
+
+    const abuseSignal =
+      data.recent_abuse ||
+      data.frequent_abuser ||
+      data.high_risk_attacks ||
+      data.bot_status
+
+    const sharedOrDynamic = data.shared_connection || data.dynamic_connection
+    const datacenterConnection = connectionType === 'data center'
+
+    if (vpnLikeSignal) return 1
+    if (fraudScore >= 90) return 1
+    if (fraudScore >= 75 && (abuseSignal || datacenterConnection || sharedOrDynamic)) {
+      return 1
+    }
+
+    return 0
   }
 
   static async getLocation(ip) {
