@@ -118,12 +118,17 @@ class Controller {
       limit: 2
     })
 
-    if (records.length < 2) return 0
+    if (records.length < 2) {
+      console.log('[DEBUG] session_duration: no previous session found')
+      return 0
+    }
 
     const prev = records[1] // sesi sebelumnya
     const end = prev.logout_time || prev.last_active_at || new Date()
     const diff = new Date(end) - new Date(prev.login_time)
-    return Math.max(0, Math.floor(diff / 60000))
+    const durationMin = Math.max(0, Math.floor(diff / 60000))
+    console.log(`[DEBUG] session_duration: login=${prev.login_time} end=${end} diff=${durationMin}min`)
+    return durationMin
   }
 
   static async getFailedAttempts(userId, recoveredAt) {
