@@ -60,6 +60,14 @@ module.exports = {
         type: Sequelize.FLOAT,
         allowNull: true
       },
+      rule_score: {
+        type: Sequelize.FLOAT,
+        allowNull: true
+      },
+      ml_score: {
+        type: Sequelize.FLOAT,
+        allowNull: true
+      },
       prediction: {
         type: Sequelize.STRING,
         allowNull: true

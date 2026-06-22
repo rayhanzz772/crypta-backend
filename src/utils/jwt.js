@@ -4,11 +4,11 @@ const jwt = require('jsonwebtoken')
 const key = process.env.JWT_SECRET
 
 function generateToken(payload, expiresIn = process.env.JWT_EXPIRES_IN || '7d') {
-  return jwt.sign(payload, key, { expiresIn })
+  return jwt.sign(payload, key, { expiresIn, algorithm: 'HS256' })
 }
 
 function verifyToken(token) {
-  return jwt.verify(token, key)
+  return jwt.verify(token, key, { algorithms: ['HS256'] })
 }
 
 function decodeToken(token) {

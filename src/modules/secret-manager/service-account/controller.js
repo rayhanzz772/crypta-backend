@@ -6,8 +6,17 @@ const HttpStatusCode = require('axios')
 const HTTP_OK = HttpStatusCode?.Ok || 200
 
 async function listServiceAccounts(req, res) {
-  const { ServiceAccount } = req.models
+  const { Project, ServiceAccount } = req.models
   const { project_id } = req.params
+  const userId = req.user.userId
+
+  // Verify project ownership
+  const project = await Project.findOne({
+    where: { id: project_id, owner_id: userId }
+  })
+  if (!project) {
+    return res.status(403).json({ success: false, message: 'Project not found or access denied' })
+  }
 
   // Get pagination parameters from query string
   const page = parseInt(req.query.page) || 1
@@ -36,10 +45,13 @@ async function createServiceAccount(req, res) {
   const { Project, ServiceAccount } = req.models
   const { project_id } = req.params
   const { name } = req.body
+  const userId = req.user.userId
 
-  const project = await Project.findByPk(project_id)
+  const project = await Project.findOne({
+    where: { id: project_id, owner_id: userId }
+  })
   if (!project) {
-    return res.status(404).json({ message: 'Project not found' })
+    return res.status(403).json({ message: 'Project not found or access denied' })
   }
 
   const activeServiceAccountsCount = await ServiceAccount.count({
@@ -95,11 +107,20 @@ async function createServiceAccount(req, res) {
 }
 
 async function deleteServiceAccount(req, res) {
-  const { ServiceAccount } = req.models
+  const { ServiceAccount, Project } = req.models
   const { service_account_id } = req.params
+  const userId = req.user.userId
 
   const sa = await ServiceAccount.findByPk(service_account_id)
   if (!sa) return res.status(404).json({ message: 'Not found' })
+
+  // Verify the service account belongs to a project owned by the requesting user
+  const project = await Project.findOne({
+    where: { id: sa.project_id, owner_id: userId }
+  })
+  if (!project) {
+    return res.status(403).json({ success: false, message: 'Access denied' })
+  }
 
   await sa.update({ status: 'disabled' })
   await sa.update({ deleted_at: new Date() })

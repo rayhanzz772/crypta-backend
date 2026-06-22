@@ -31,6 +31,8 @@ module.exports = (sequelize, DataTypes) => {
       unique_endpoints_visited: { type: DataTypes.INTEGER, allowNull: true },
       vpn_used: { type: DataTypes.BOOLEAN, allowNull: true },
       anomaly_score: { type: DataTypes.FLOAT, allowNull: true },
+      rule_score: { type: DataTypes.FLOAT, allowNull: true },
+      ml_score: { type: DataTypes.FLOAT, allowNull: true },
       prediction: { type: DataTypes.STRING, allowNull: true },
       risk_level: { type: DataTypes.STRING, allowNull: true },
       created_at: {
