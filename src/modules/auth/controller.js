@@ -131,9 +131,9 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, master_hash } = req.body
-    const ipLocation = await Detection.getClientIP(req)
+    const clientIp = Detection.getClientIP(req)
     const loginTime = new Date()
-    const getLocation = await Detection.getLocation(ipLocation)
+    const getLocation = await Detection.getLocation(clientIp)
 
     if (!email || !master_hash) {
       return res.status(401).json({
@@ -190,8 +190,8 @@ exports.login = async (req, res) => {
 
     let isVpn = false
     try {
-      if (req.ip && req.ip !== '::1' && req.ip !== '127.0.0.1') {
-        isVpn = (await Detection.checkVPN(req.ip)) === 1
+      if (clientIp) {
+        isVpn = (await Detection.checkVPN(clientIp)) === 1
       }
     } catch (err) {
       console.error('VPN check error:', err.message)
@@ -202,7 +202,7 @@ exports.login = async (req, res) => {
       await db.LoginHistory.create({
         user_id: user.id,
         login_time: new Date(),
-        ip_address: req.ip,
+        ip_address: clientIp,
         device: req.headers['user-agent'],
         location: getLocation.city || 'Semarang',
         vpn_used: isVpn,
@@ -218,7 +218,7 @@ exports.login = async (req, res) => {
     const loginHistory = await db.LoginHistory.create({
       user_id: user.id,
       login_time: loginTime,
-      ip_address: req.ip,
+      ip_address: clientIp,
       device: req.headers['user-agent'],
       location: getLocation.city || 'Semarang',
       vpn_used: isVpn,
@@ -243,7 +243,7 @@ exports.login = async (req, res) => {
 
     await user.update({
       last_login_at: loginTime,
-      last_ip: req.ip,
+      last_ip: clientIp,
       last_location: getLocation.city || 'Semarang',
       last_device: req.headers['user-agent']
     })
@@ -262,7 +262,7 @@ exports.login = async (req, res) => {
       (loginTime - new Date(lastPrediction.created_at)) < PREDICTION_COOLDOWN_MS
 
     if (!isWithinCooldown) {
-      buildFeatureVector(user.id, loginTime, req.ip, user.recovered_at)
+      buildFeatureVector(user.id, loginTime, clientIp, user.recovered_at)
         .then(async (features) => {
           const anomalyLog = await db.AnomalyLog.create({
             id: require('cuid')(),
