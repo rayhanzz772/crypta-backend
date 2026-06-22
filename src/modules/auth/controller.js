@@ -294,7 +294,8 @@ exports.login = async (req, res) => {
             const lastAlert = await db.AnomalyLog.findOne({
               where: {
                 user_id: user.id,
-                risk_level: ['MEDIUM', 'HIGH']
+                risk_level: ['MEDIUM', 'HIGH'],
+                id: { [db.Sequelize.Op.ne]: anomalyLog.id } // exclude current entry
               },
               order: [['created_at', 'DESC']],
               attributes: ['risk_level', 'created_at']
