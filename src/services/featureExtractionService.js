@@ -11,7 +11,7 @@ async function buildFeatureVector(
 
   const day_of_week = new Date(loginTime).getDay()
 
-  const session_duration_min = await Detection.getSessionDuration(userId)
+  const session_duration_min = 240
 
   const failed_attempts = await Detection.getFailedAttempts(userId, recoveredAt)
 
