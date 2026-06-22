@@ -24,7 +24,7 @@ async function checkMlServiceReady() {
   }
 
   try {
-    await axios.get(healthUrl, { timeout: 3000 })
+    await axios.get(healthUrl, { timeout: 10000 })
     console.log('[ML Service] Ready')
     return true
   } catch (error) {
