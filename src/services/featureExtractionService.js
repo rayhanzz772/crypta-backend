@@ -11,7 +11,7 @@ async function buildFeatureVector(
 
   const day_of_week = new Date(loginTime).getDay()
 
-  const session_duration_min = 240
+  const session_duration_min = await Detection.getSessionDuration(userId)
 
   const failed_attempts = await Detection.getFailedAttempts(userId, recoveredAt)
 
@@ -21,9 +21,15 @@ async function buildFeatureVector(
 
   const geo_anomaly = await Detection.getGeoAnomaly(userId, recoveredAt)
 
-  const access_count_10min = 60
+  const access_count_10min = await Detection.getAccessCount10Min(
+    userId,
+    recoveredAt
+  )
 
-  const unique_endpoints_visited = 100
+  const unique_endpoints_visited = await Detection.getUniqueEndpoints(
+    userId,
+    recoveredAt
+  )
 
   const vpn_used = await Detection.checkVPN(userIp, userAgent)
 
