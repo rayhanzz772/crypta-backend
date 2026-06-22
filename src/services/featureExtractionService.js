@@ -21,15 +21,9 @@ async function buildFeatureVector(
 
   const geo_anomaly = await Detection.getGeoAnomaly(userId, recoveredAt)
 
-  const access_count_10min = await Detection.getAccessCount10Min(
-    userId,
-    recoveredAt
-  )
+  const access_count_10min = 60
 
-  const unique_endpoints_visited = await Detection.getUniqueEndpoints(
-    userId,
-    recoveredAt
-  )
+  const unique_endpoints_visited = 100
 
   const vpn_used = await Detection.checkVPN(userIp, userAgent)
 
