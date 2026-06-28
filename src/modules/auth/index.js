@@ -7,6 +7,7 @@ const {
   loginSchema,
   registerSchema,
   verifyRecoverySchema,
+  verifyRecoveryOtpSchema,
   resetPasswordSchema,
   verifyEmailSchema,
   resendVerificationSchema
@@ -29,6 +30,12 @@ router.post(
   recoveryLimiter,
   validateRequest({ body: verifyRecoverySchema }),
   Controller.verifyRecoveryKey
+)
+router.post(
+  '/verify-recovery-otp',
+  recoveryLimiter,
+  validateRequest({ body: verifyRecoveryOtpSchema }),
+  Controller.verifyRecoveryOtp
 )
 router.post(
   '/reset-password',

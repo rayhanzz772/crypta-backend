@@ -472,8 +472,27 @@ exports.verifyRecoveryKey = async (req, res) => {
       })
     }
 
+    // Generate 6-digit OTP and store it (expires in 10 minutes)
+    const recoveryOtp = Math.floor(100000 + Math.random() * 900000).toString()
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
+
+    await user.update({
+      recovery_otp: recoveryOtp,
+      recovery_otp_expires_at: otpExpiresAt
+    })
+
+    // Send OTP email (non-blocking)
+    sendMail({
+      to: email,
+      subject: 'Crypta Recovery OTP',
+      html: verificationEmailTemplate(recoveryOtp)
+    }).catch((err) =>
+      console.error('[Mailer] Failed to send recovery OTP:', err.message)
+    )
+
     return res.json({
       success: true,
+      message: 'A 6-digit OTP has been sent to your email. Enter it along with your recovery key.',
       data: {
         encrypted_mek_by_recovery: user.encrypted_mek_by_recovery.toString('hex'),
         mek_rc_iv: user.mek_rc_iv.toString('hex'),
@@ -489,16 +508,87 @@ exports.verifyRecoveryKey = async (req, res) => {
   }
 }
 
+exports.verifyRecoveryOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body
+
+    const user = await User.findOne({ where: { email } })
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP'
+      })
+    }
+
+    const now = new Date()
+    const isExpired =
+      !user.recovery_otp_expires_at ||
+      now > new Date(user.recovery_otp_expires_at)
+    const isInvalid = user.recovery_otp !== otp
+
+    if (isExpired || isInvalid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP'
+      })
+    }
+
+    // Clear OTP immediately after successful verification
+    await user.update({
+      recovery_otp: null,
+      recovery_otp_expires_at: null
+    })
+
+    // Issue a short-lived otp_token (10 min) as proof of OTP verification
+    const otpToken = jwt.sign(
+      { userId: user.id, email: user.email, purpose: 'password_reset' },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m', algorithm: 'HS256' }
+    )
+
+    return res.json({
+      success: true,
+      message: 'OTP verified. You may now reset your password.',
+      data: { otp_token: otpToken }
+    })
+  } catch (error) {
+    console.error('Verify recovery OTP error:', error)
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    })
+  }
+}
+
 exports.resetPassword = async (req, res) => {
   try {
     const {
       email,
+      otp_token,
       new_master_hash,
       new_kek_salt,
       encrypted_mek_by_password,
       mek_pw_iv,
       mek_pw_tag
     } = req.body
+
+    // Verify otp_token — proof that user passed OTP check
+    let tokenPayload
+    try {
+      tokenPayload = jwt.verify(otp_token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired OTP token. Please restart the recovery process.'
+      })
+    }
+
+    if (tokenPayload.purpose !== 'password_reset' || tokenPayload.email !== email) {
+      return res.status(401).json({
+        success: false,
+        message: 'OTP token is not valid for this operation.'
+      })
+    }
 
     const user = await User.findOne({ where: { email } })
     if (!user) throw new Error('User not found')

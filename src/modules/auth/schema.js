@@ -29,8 +29,19 @@ const verifyRecoverySchema = z.object({
   email: z.string().email('Invalid email format')
 })
 
+const verifyRecoveryOtpSchema = z.object({
+  email: z
+    .string({ required_error: 'Email is required' })
+    .email('Invalid email format'),
+  otp: z
+    .string({ required_error: 'OTP is required' })
+    .length(6, 'OTP must be exactly 6 digits')
+    .regex(/^\d{6}$/, 'OTP must be numeric')
+})
+
 const resetPasswordSchema = z.object({
   email: z.string().email('Invalid email format'),
+  otp_token: z.string().min(1, 'OTP token is required'),
   new_master_hash: z.string().min(1, 'New master hash is required'),
   new_kek_salt: z.string().min(1, 'New KEK salt is required'),
   encrypted_mek_by_password: z.string().min(1, 'Encrypted MEK by password is required'),
@@ -69,6 +80,7 @@ module.exports = {
   loginSchema,
   registerSchema,
   verifyRecoverySchema,
+  verifyRecoveryOtpSchema,
   resetPasswordSchema,
   migrateToMekSchema,
   verifyEmailSchema,
