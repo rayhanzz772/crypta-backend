@@ -38,8 +38,8 @@ exports.getSalt = async (req, res) => {
 
 exports.register = async (req, res) => {
   try {
-    const { 
-      email, 
+    const {
+      email,
       master_hash,
       kek_salt,
       encrypted_mek_by_password,
@@ -52,6 +52,31 @@ exports.register = async (req, res) => {
 
     const existingUser = await User.findOne({ where: { email } })
     if (existingUser) {
+      if (!existingUser.is_verified) {
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString()
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+
+        await existingUser.update({
+          verification_code: verificationCode,
+          verification_expires_at: expiresAt
+        })
+
+        sendMail({
+          to: email,
+          subject: 'Your new Crypta verification code',
+          html: verificationEmailTemplate(verificationCode)
+        }).catch((err) =>
+          console.error('[Mailer] Failed to resend verification on re-register:', err.message)
+        )
+
+        return res.status(409).json({
+          success: false,
+          errorCode: 'UNVERIFIED_EMAIL',
+          message: 'This email is already registered but not verified. A new verification code has been sent to your inbox.',
+          data: { email: existingUser.email }
+        })
+      }
+
       return res.status(400).json({
         success: false,
         message: 'Email already registered'
@@ -466,13 +491,13 @@ exports.verifyRecoveryKey = async (req, res) => {
 
 exports.resetPassword = async (req, res) => {
   try {
-    const { 
+    const {
       email,
-      new_master_hash, 
-      new_kek_salt, 
-      encrypted_mek_by_password, 
-      mek_pw_iv, 
-      mek_pw_tag 
+      new_master_hash,
+      new_kek_salt,
+      encrypted_mek_by_password,
+      mek_pw_iv,
+      mek_pw_tag
     } = req.body
 
     const user = await User.findOne({ where: { email } })

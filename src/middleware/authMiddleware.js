@@ -4,7 +4,6 @@ const db = require('../../db/models')
 const { isTokenBlacklisted } = require('../utils/tokenBlacklist')
 
 const authMiddleware = async (req, res, next) => {
-  // Read token from httpOnly cookie first, then fall back to Authorization header
   const cookieToken = req.cookies?.token
   const authHeader = req.headers.authorization
   const headerToken =
@@ -21,10 +20,8 @@ const authMiddleware = async (req, res, next) => {
     })
   }
   try {
-    // Verifikasi token
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
 
-    // Check if token has been revoked (logged out)
     if (isTokenBlacklisted(token)) {
       return res.status(401).json({
         success: false,
