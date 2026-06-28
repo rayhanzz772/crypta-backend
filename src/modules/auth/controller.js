@@ -472,7 +472,6 @@ exports.verifyRecoveryKey = async (req, res) => {
       })
     }
 
-    // Generate 6-digit OTP and store it (expires in 10 minutes)
     const recoveryOtp = Math.floor(100000 + Math.random() * 900000).toString()
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
@@ -481,7 +480,6 @@ exports.verifyRecoveryKey = async (req, res) => {
       recovery_otp_expires_at: otpExpiresAt
     })
 
-    // Send OTP email (non-blocking)
     sendMail({
       to: email,
       subject: 'Crypta Recovery OTP',

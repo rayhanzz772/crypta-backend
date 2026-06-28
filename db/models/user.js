@@ -109,6 +109,14 @@ module.exports = (sequelize, DataTypes) => {
       recovered_at: {
         type: DataTypes.DATE,
         allowNull: true
+      },
+      recovery_otp: {
+        type: DataTypes.STRING(6),
+        allowNull: true
+      },
+      recovery_otp_expires_at: {
+        type: DataTypes.DATE,
+        allowNull: true
       }
     },
     {
