@@ -2,8 +2,11 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Install build tools required for native modules (argon2, bcrypt)
+RUN apk add --no-cache python3 make g++
+
 COPY package*.json ./
-RUN npm install --production
+RUN npm ci --omit=dev
 
 COPY . .
 
