@@ -24,6 +24,7 @@ router.use(
 
 router.use(
   '/service-account',
+  authMiddleware,
   require('../modules/secret-manager/service-account/index')
 )
 
