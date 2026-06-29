@@ -13,6 +13,7 @@ router.use('/auth', require('../modules/secret-manager/auth/index'))
 
 router.use(
   '/latest-secret',
+  authMiddleware,
   require('../modules/secret-manager/latest-secret/index')
 )
 
@@ -40,6 +41,6 @@ router.use(
   require('../modules/secret-manager/secret-version/index')
 )
 
-router.use('/bindings', require('../modules/secret-manager/iam-binding/index'))
+router.use('/bindings', authMiddleware, require('../modules/secret-manager/iam-binding/index'))
 
 module.exports = router
