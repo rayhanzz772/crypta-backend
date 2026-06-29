@@ -36,6 +36,7 @@ router.use(
 
 router.use(
   '/secret-version',
+  authMiddleware,
   require('../modules/secret-manager/secret-version/index')
 )
 
